@@ -42,6 +42,7 @@ try{ db=JSON.parse(localStorage.getItem(KEY))||{}; }catch(e){ db={}; }
 db.log=db.log||{}; db.weights=db.weights||[]; db.waist=db.waist||[]; db.lifts=db.lifts||[];
 db.runs=db.runs||[]; db.food=db.food||{}; db.dtype=db.dtype||{}; db.meta=db.meta||{updated:0};
 db.settings=db.settings||{eatBack:false};
+db.meals=db.meals||[];
 if(db.health){delete db.health;} // health now lives server-side in its own store
 var HEALTH={}; // Apple Health data, read-only from the backend (never synced up)
 try{ cfg=JSON.parse(localStorage.getItem(CFGKEY))||{}; }catch(e){ cfg={}; }
@@ -89,6 +90,7 @@ function pull(cb){
        db=remote;
        db.log=db.log||{};db.weights=db.weights||[];db.waist=db.waist||[];db.lifts=db.lifts||[];
        db.runs=db.runs||[];db.food=db.food||{};db.dtype=db.dtype||{};db.meta=db.meta||{updated:0};
+       db.settings=db.settings||{eatBack:false};db.meals=db.meals||[];
        localSave();
      }
      setSync("ok"); if(cb)cb();
@@ -301,7 +303,93 @@ function drawFood(){
   Array.prototype.forEach.call(document.querySelectorAll("#foodLog .del"),function(b){
     b.addEventListener("click",function(){foodFor(k).splice(+b.dataset.i,1);save();drawFood();});
   });
+  drawStreak(); drawRecent(); drawMeals();
 }
+
+/* ---------- MyFitnessPal-style reuse: streak, recent, saved meals, copy day ---------- */
+function foodStreak(){
+  // consecutive days (ending today or yesterday) with at least one logged food
+  var d=new Date(TODAY), n=0;
+  if(!(foodFor(iso(d)).length)){ d.setDate(d.getDate()-1); } // allow "not logged yet today"
+  while(foodFor(iso(d)).length>0){ n++; d.setDate(d.getDate()-1); }
+  return n;
+}
+function drawStreak(){
+  var el=document.getElementById("streak"); if(!el)return;
+  var n=foodStreak();
+  if(n>=2){ el.style.display=""; el.textContent="🔥 "+n+"-day logging streak"; }
+  else{ el.style.display="none"; }
+}
+function recentFoods(){
+  // most-recent distinct items (by name+amt) from the last ~30 logged days, today excluded
+  var days=Object.keys(db.food).filter(function(d){return d!==iso(TODAY)&&db.food[d]&&db.food[d].length;}).sort().reverse();
+  var seen={}, out=[];
+  for(var i=0;i<days.length && out.length<8;i++){
+    var arr=db.food[days[i]];
+    for(var j=arr.length-1;j>=0 && out.length<8;j--){
+      var it=arr[j], key=(it.name||"")+"|"+(it.amt||"");
+      if(seen[key])continue; seen[key]=1; out.push(it);
+    }
+  }
+  return out;
+}
+function drawRecent(){
+  var wrap=document.getElementById("recentWrap"),box=document.getElementById("recentFoods");
+  if(!box)return;
+  var r=recentFoods();
+  if(!r.length){ wrap.style.display="none"; return; }
+  wrap.style.display="";
+  box.innerHTML=r.map(function(it,i){
+    return '<button class="staple" data-r="'+i+'">'+esc(it.name)+'<small>'+esc(it.amt||"")+' · '+Math.round(it.protein)+'p</small></button>';
+  }).join("");
+  window._recent=r;
+  Array.prototype.forEach.call(box.querySelectorAll(".staple"),function(b){
+    b.addEventListener("click",function(){
+      var it=window._recent[+b.dataset.r];
+      addFood({name:it.name,amt:it.amt,cal:it.cal,protein:it.protein,carbs:it.carbs,fat:it.fat,fiber:it.fiber,src:"recent",ts:Date.now()});
+    });
+  });
+}
+function drawMeals(){
+  var wrap=document.getElementById("mealsWrap"),box=document.getElementById("savedMeals");
+  if(!box)return;
+  if(!db.meals.length){ wrap.style.display="none"; return; }
+  wrap.style.display="";
+  box.innerHTML=db.meals.map(function(m,i){
+    var t=m.items.reduce(function(a,x){a.c+=x.cal||0;a.p+=x.protein||0;return a;},{c:0,p:0});
+    return '<div class="mealrow"><div class="mn">'+esc(m.name)+'<small>'+m.items.length+' items · '+Math.round(t.c)+' kcal · '+Math.round(t.p)+'g protein</small></div>'+
+      '<button class="logmeal" data-m="'+i+'">Log</button><button class="delmeal" data-dm="'+i+'" aria-label="Delete meal">×</button></div>';
+  }).join("");
+  Array.prototype.forEach.call(box.querySelectorAll(".logmeal"),function(b){
+    b.addEventListener("click",function(){ logMeal(+b.dataset.m); });
+  });
+  Array.prototype.forEach.call(box.querySelectorAll(".delmeal"),function(b){
+    b.addEventListener("click",function(){ db.meals.splice(+b.dataset.dm,1); save(); drawMeals(); toast("Meal deleted"); });
+  });
+}
+function logMeal(i){
+  var m=db.meals[i]; if(!m)return; var k=iso(TODAY);
+  m.items.forEach(function(x){ foodFor(k).push({name:x.name,amt:x.amt,cal:x.cal,protein:x.protein,carbs:x.carbs,fat:x.fat,fiber:x.fiber,src:"meal",ts:Date.now()}); });
+  save(); drawFood(); toast("Logged "+m.name);
+}
+function copyYesterday(){
+  var y=new Date(TODAY); y.setDate(y.getDate()-1);
+  var src=db.food[iso(y)]||[];
+  if(!src.length){ toast("Nothing logged yesterday"); return; }
+  var k=iso(TODAY);
+  src.forEach(function(x){ foodFor(k).push({name:x.name,amt:x.amt,cal:x.cal,protein:x.protein,carbs:x.carbs,fat:x.fat,fiber:x.fiber,src:"copy",ts:Date.now()}); });
+  save(); drawFood(); toast("Copied "+src.length+" items from yesterday");
+}
+function saveTodayAsMeal(){
+  var list=foodFor(iso(TODAY));
+  if(!list.length){ toast("Log some food first"); return; }
+  var name=window.prompt("Name this meal (e.g. \"Breakfast\", \"Post-workout\"):","");
+  if(!name||!name.trim())return;
+  db.meals.push({name:name.trim().slice(0,40),items:list.map(function(x){return {name:x.name,amt:x.amt,cal:x.cal,protein:x.protein,carbs:x.carbs,fat:x.fat,fiber:x.fiber};})});
+  save(); drawMeals(); toast("Saved “"+name.trim()+"”");
+}
+document.getElementById("copyYest").addEventListener("click",copyYesterday);
+document.getElementById("saveMeal").addEventListener("click",saveTodayAsMeal);
 Array.prototype.forEach.call(document.querySelectorAll("#dayType button"),function(b){
   b.addEventListener("click",function(){db.dtype[iso(TODAY)]=b.dataset.t;save();drawFood();});
 });
@@ -566,10 +654,10 @@ var foodTab=document.querySelector('.tab[data-view="food"]'); if(foodTab)foodTab
 setInterval(pullHealth,60000);
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=6").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=7").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=6; // bump this + version.json + ?v= on every release
+var APPVER=7; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})

@@ -210,6 +210,17 @@
   .logbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
   .logbtns .btn{font-size:11px}
   .staples{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:7px}
+  .reuserow{display:flex;gap:8px;margin:2px 0 12px}
+  .reuserow .btn{flex:1;font-size:11px;padding:10px 8px}
+  .streak{margin-top:8px;font-size:12.5px;color:var(--gold);font-weight:700}
+  .mealrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
+  .mealrow:last-child{border-bottom:none}
+  .mealrow .mn{flex:1;min-width:0;font-size:14px}
+  .mealrow .mn small{display:block;color:var(--muted);font-size:11.5px;margin-top:1px}
+  .mealrow .logmeal{background:var(--gold);border:none;color:#17161A;font-family:var(--display);font-weight:800;
+    font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:8px 14px;border-radius:8px;cursor:pointer;flex:none}
+  .mealrow .delmeal{background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:2px 6px;flex:none}
+  .mealrow .delmeal:hover{color:var(--red)}
   .staple{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 6px;
     text-align:center;cursor:pointer;font-size:12px}
   .staple:hover{border-color:var(--gold)}
@@ -315,6 +326,7 @@
 <div class="view" id="v-food">
   <article class="card" id="foodCard" style="border-left-color:var(--gold)">
     <div class="head"><h2>Today's Fuel</h2><span class="date" id="foodDate"></span></div>
+    <div id="streak" class="streak" style="display:none"></div>
     <div class="daytype" id="dayType">
       <button data-t="train" aria-pressed="true">Training day</button>
       <button data-t="rest" aria-pressed="false">Rest day</button>
@@ -328,7 +340,19 @@
       <button class="btn gold" id="talkBtn">🎤 Talk / type it</button>
       <button class="btn ghost" id="scanBtn">📷 Scan barcode</button>
     </div>
-    <div class="eyebrow" style="margin:4px 0 8px">Quick tap</div>
+    <div class="reuserow">
+      <button class="btn ghost" id="copyYest">📋 Copy yesterday</button>
+      <button class="btn ghost" id="saveMeal">💾 Save today as meal</button>
+    </div>
+    <div id="recentWrap" style="display:none">
+      <div class="eyebrow" style="margin:4px 0 8px">Recent</div>
+      <div class="staples" id="recentFoods"></div>
+    </div>
+    <div id="mealsWrap" style="display:none">
+      <div class="eyebrow" style="margin:14px 0 8px">Saved meals</div>
+      <div id="savedMeals"></div>
+    </div>
+    <div class="eyebrow" style="margin:14px 0 8px">Quick tap</div>
     <div class="staples" id="staples"></div>
   </section>
   <section class="panel">
@@ -424,6 +448,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>
