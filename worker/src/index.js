@@ -134,11 +134,15 @@ export default {
             const id = String(w.id || ((w.name || "") + (w.start || "")));
             if (day.workouts.some((x) => x.id === id)) return; // dedupe re-sends
             const ae = w.activeEnergyBurned || w.activeEnergy || {};
+            const dist = w.distance || w.totalDistance || w.walkingRunningDistance || null;
+            const distMi = dist == null ? null : (num(dist.qty != null ? dist.qty : dist));
             day.workouts.push({
               id: id,
               type: String(w.name || "Workout").slice(0, 40),
               kcal: Math.round(num(ae.qty) || num(w.totalEnergy && w.totalEnergy.qty) || 0),
               min: Math.round((num(w.duration) || 0) / 60),
+              mi: distMi != null ? Math.round(distMi * 100) / 100 : null,
+              start: String(w.start || w.end || date),
               ts: Date.now()
             });
             touched++;

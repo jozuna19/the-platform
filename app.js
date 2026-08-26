@@ -66,7 +66,7 @@ function pullHealth(){
   if(!cfg.url||!cfg.tok) return;
   fetch(cfg.url.replace(/\/$/,"")+"/health",{headers:{"Authorization":"Bearer "+cfg.tok}})
    .then(function(r){return r.ok?r.json():null;})
-   .then(function(h){ if(h){ HEALTH=h; drawHealthStats(); if(document.getElementById("v-food").classList.contains("on")) drawFood(); } })
+   .then(function(h){ if(h){ HEALTH=h; drawHealthStats(); drawRuns(); if(document.getElementById("v-food").classList.contains("on")) drawFood(); } })
    .catch(function(){});
 }
 function push(){
@@ -175,12 +175,38 @@ document.addEventListener("click",function(e){
   else if(t&&t.getAttribute&&t.getAttribute("data-del-run")!==null){ delRun(parseInt(t.getAttribute("data-del-run"),10)); }
 });
 function pace(mi,t){var p=String(t).split(":").map(Number);if(p.some(isNaN)||!mi)return "—";var sec=p.length===3?p[0]*3600+p[1]*60+p[2]:p.length===2?p[0]*60+p[1]:p[0];var per=sec/mi;return Math.floor(per/60)+":"+String(Math.round(per%60)).padStart(2,"0");}
+function appleRuns(){
+  // Pull run-type workouts (with distance) out of the Apple Health store.
+  var out=[];
+  Object.keys(HEALTH).forEach(function(d){
+    (HEALTH[d].workouts||[]).forEach(function(w){
+      var t=(w.type||"").toLowerCase();
+      if(w.mi==null||!(t.indexOf("run")>=0||t.indexOf("jog")>=0))return;
+      out.push({mi:w.mi,min:w.min||0,d:d,src:"apple"});
+    });
+  });
+  return out;
+}
 function drawRuns(){
-  var rows=db.runs.slice().reverse().slice(0,6);
-  document.getElementById("rEmpty").style.display=rows.length?"none":"block";
-  document.getElementById("rBody").innerHTML=rows.map(function(x){
-    var idx=db.runs.indexOf(x);
-    return "<tr><td>"+x.mi.toFixed(1)+" mi</td><td class='n'>"+esc(x.t)+"</td><td class='n'>"+pace(x.mi,x.t)+"</td><td class='n'>"+x.d.slice(5)+'</td><td class="n"><button class="xdel" data-del-run="'+idx+'" aria-label="Delete">×</button></td></tr>';
+  // Manual runs (deletable) + Apple Health runs (auto, read-only), newest first.
+  var manual=db.runs.map(function(x,i){return {mi:x.mi,t:x.t,d:x.d,idx:i,src:"manual"};});
+  var auto=appleRuns().filter(function(a){
+    // skip an Apple run that duplicates a manual one on the same day (±0.3 mi)
+    return !manual.some(function(mm){return mm.d===a.d && Math.abs(mm.mi-a.mi)<0.3;});
+  });
+  var all=manual.concat(auto).sort(function(a,b){return a.d<b.d?1:a.d>b.d?-1:0;}).slice(0,8);
+  document.getElementById("rEmpty").style.display=all.length?"none":"block";
+  document.getElementById("rBody").innerHTML=all.map(function(x){
+    var tstr, pc;
+    if(x.src==="apple"){
+      var mm=Math.round(x.min);
+      tstr=(mm>=60?(Math.floor(mm/60)+"h"+(mm%60)+"m"):(mm+" min"));
+      if(x.min&&x.mi){var sec=(x.min*60)/x.mi;pc=Math.floor(sec/60)+":"+String(Math.round(sec%60)).padStart(2,"0");}else{pc="—";}
+    } else { tstr=x.t; pc=pace(x.mi,x.t); }
+    var last=x.src==="apple"
+      ? '<td class="n"><span class="wtag">⌚</span></td>'
+      : '<td class="n"><button class="xdel" data-del-run="'+x.idx+'" aria-label="Delete">×</button></td>';
+    return "<tr><td>"+x.mi.toFixed(1)+" mi</td><td class='n'>"+esc(tstr)+"</td><td class='n'>"+pc+"</td><td class='n'>"+x.d.slice(5)+"</td>"+last+"</tr>";
   }).join("");
   var races=[["Peachtree Road Race 10K","Done · 1:11",1],["PNC Atlanta 10 Miler","Fall 2026",0],["Thanksgiving Half Marathon","Nov 2026",0]];
   document.getElementById("races").innerHTML='<div style="display:flex;flex-direction:column;gap:9px">'+races.map(function(r,i){
@@ -199,8 +225,6 @@ function drawWeight(){
   document.getElementById("wAvg").textContent=avg!==null?("7-day avg "+avg.toFixed(1)+" lb"+(w.length>=7?"":" ("+w.length+"/7 logged)")):"Log daily — the trend is the only number that matters.";
   var ref=avg!==null?avg:cur;
   document.getElementById("ladder").innerHTML=RUNGS.map(function(r){return '<div class="rung"'+(ref!==null&&ref<=r?' data-hit="1"':'')+'><div class="t"></div><span class="n">'+r+'</span></div>';}).join("");
-  var wa=db.waist.slice().sort(function(a,b){return a.d<b.d?-1:1;});
-  document.getElementById("waLast").textContent=wa.length?("Last: "+wa[wa.length-1].v.toFixed(1)+'" · '+wa[wa.length-1].d.slice(5)):"No waist logged yet.";
 }
 
 /* ---------- Apple Health stats (Body tab) ---------- */
@@ -418,10 +442,6 @@ document.getElementById("wForm").addEventListener("submit",function(ev){ev.preve
   var v=parseFloat(document.getElementById("wIn").value);if(isNaN(v))return;var k=iso(TODAY);
   db.weights=db.weights.filter(function(x){return x.d!==k;});db.weights.push({d:k,v:v});save();
   document.getElementById("wIn").value="";drawWeight();});
-document.getElementById("waForm").addEventListener("submit",function(ev){ev.preventDefault();
-  var v=parseFloat(document.getElementById("waIn").value);if(isNaN(v))return;var k=iso(TODAY);
-  db.waist=db.waist.filter(function(x){return x.d!==k;});db.waist.push({d:k,v:v});save();
-  document.getElementById("waIn").value="";drawWeight();});
 document.getElementById("sForm").addEventListener("submit",function(ev){ev.preventDefault();
   var l=document.getElementById("sLift").value.trim(),w=parseFloat(document.getElementById("sWt").value),r=parseInt(document.getElementById("sReps").value,10);
   if(!l||isNaN(w)||isNaN(r))return;db.lifts.push({lift:l,wt:w,reps:r,d:iso(TODAY)});save();this.reset();drawLifts();});
