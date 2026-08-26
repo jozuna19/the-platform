@@ -115,29 +115,56 @@ export default {
         return json(raw ? JSON.parse(raw) : {}, 200, env);
       }
       if (url.pathname === "/health" && request.method === "POST") {
-        // Apple Health push from an iOS Shortcut (workout-ends automation).
-        // Own KV key so the app's /state sync can never overwrite it.
-        // Accepts { date?, kcalToday?, workout?:{type,kcal,min} } — numbers may
-        // arrive as strings from Shortcuts, so coerce defensively.
+        // Apple Health push. Own KV key so the app's /state sync can't overwrite it.
+        // Accepts EITHER Health Auto Export's format {data:{workouts:[...],metrics:[...]}}
+        // OR a simple {date,kcalToday,workout} shape (iOS Shortcut). Numbers may be strings.
         const body = await request.json();
         const num = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
         const raw = await env.PLATFORM_STATE.get(HEALTH_KEY);
         const hs = raw ? JSON.parse(raw) : {};
-        const date = (body.date || new Date().toISOString().slice(0, 10)).slice(0, 10);
-        const day = hs[date] || (hs[date] = { kcalToday: 0, workouts: [] });
-        const kt = num(body.kcalToday);
-        if (kt !== null) day.kcalToday = Math.round(kt);
-        if (body.workout && (body.workout.type || body.workout.kcal != null)) {
-          day.workouts.push({
-            type: String(body.workout.type || "Workout").slice(0, 40),
-            kcal: Math.round(num(body.workout.kcal) || 0),
-            min: Math.round(num(body.workout.min) || 0),
-            ts: Date.now()
+        const getDay = (d) => hs[d] || (hs[d] = { kcalToday: 0, workouts: [] });
+        const today = new Date().toISOString().slice(0, 10);
+        let touched = 0;
+
+        if (body.data && (Array.isArray(body.data.workouts) || Array.isArray(body.data.metrics))) {
+          // Health Auto Export
+          (body.data.workouts || []).forEach((w) => {
+            const date = String(w.start || w.end || today).slice(0, 10);
+            const day = getDay(date);
+            const id = String(w.id || ((w.name || "") + (w.start || "")));
+            if (day.workouts.some((x) => x.id === id)) return; // dedupe re-sends
+            const ae = w.activeEnergyBurned || w.activeEnergy || {};
+            day.workouts.push({
+              id: id,
+              type: String(w.name || "Workout").slice(0, 40),
+              kcal: Math.round(num(ae.qty) || num(w.totalEnergy && w.totalEnergy.qty) || 0),
+              min: Math.round((num(w.duration) || 0) / 60),
+              ts: Date.now()
+            });
+            touched++;
           });
+          // exercise calories for the day = sum of that day's workout kcal (MFP-style)
+          Object.keys(hs).forEach((d) => { hs[d].kcalToday = hs[d].workouts.reduce((a, x) => a + (x.kcal || 0), 0); hs[d].updated = Date.now(); });
+        } else {
+          // simple Shortcut shape
+          const date = (body.date || today).slice(0, 10);
+          const day = getDay(date);
+          const kt = num(body.kcalToday);
+          if (kt !== null) day.kcalToday = Math.round(kt);
+          if (body.workout && (body.workout.type || body.workout.kcal != null)) {
+            day.workouts.push({
+              id: String(body.workout.id || (Date.now())),
+              type: String(body.workout.type || "Workout").slice(0, 40),
+              kcal: Math.round(num(body.workout.kcal) || 0),
+              min: Math.round(num(body.workout.min) || 0),
+              ts: Date.now()
+            });
+          }
+          day.updated = Date.now();
+          touched = 1;
         }
-        day.updated = Date.now();
         await env.PLATFORM_STATE.put(HEALTH_KEY, JSON.stringify(hs));
-        return json({ ok: true, date: date, day: day }, 200, env);
+        return json({ ok: true, imported: touched }, 200, env);
       }
       return json({ error: "not found" }, 404, env);
     } catch (e) {
