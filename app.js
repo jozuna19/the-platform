@@ -128,7 +128,7 @@ function drawRail(){
   }
   document.getElementById("rail").innerHTML=html;
   Array.prototype.forEach.call(document.querySelectorAll("#rail .day"),function(b){
-    b.addEventListener("click",function(){var d=new Date(weekStart(viewing));d.setDate(d.getDate()+ +b.dataset.i);viewing=d;drawRail();drawTrainCard();});
+    b.addEventListener("click",function(){var d=new Date(weekStart(viewing));d.setDate(d.getDate()+ +b.dataset.i);setViewing(d);});
   });
 }
 function drawTrainCard(){
@@ -235,7 +235,7 @@ function drawWeight(){
 /* ---------- Apple Health stats (Body tab) ---------- */
 function drawHealthStats(){
   var el=document.getElementById("healthStats"); if(!el) return;
-  var hd=HEALTH[iso(TODAY)]||{}, m=hd.metrics||{}, burned=Math.round(hd.kcalToday||0);
+  var hd=HEALTH[iso(viewing)]||{}, m=hd.metrics||{}, burned=Math.round(hd.kcalToday||0);
   var have=burned||m.steps!=null||m.move!=null||m.exerciseMin!=null||m.distanceMi!=null;
   document.getElementById("healthPanel").style.display=have?"block":"none";
   if(!have) return;
@@ -256,8 +256,8 @@ function foodFor(k){ return db.food[k]||(db.food[k]=[]); }
 function dayTotals(k){ return foodFor(k).reduce(function(a,x){a.cal+=x.cal||0;a.p+=x.protein||0;a.fib+=x.fiber||0;return a;},{cal:0,p:0,fib:0}); }
 
 function drawFood(){
-  var k=iso(TODAY);
-  document.getElementById("foodDate").textContent=TODAY.toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"});
+  var k=iso(viewing);
+  document.getElementById("foodDate").textContent=viewing.toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"});
   var dt=dtypeFor(k);
   Array.prototype.forEach.call(document.querySelectorAll("#dayType button"),function(b){b.setAttribute("aria-pressed",b.dataset.t===dt?"true":"false");});
   var tg=targets(k),tot=dayTotals(k);
@@ -325,7 +325,7 @@ function drawStreak(){
 }
 function recentFoods(){
   // most-recent distinct items (by name+amt) from the last ~30 logged days, today excluded
-  var days=Object.keys(db.food).filter(function(d){return d!==iso(TODAY)&&db.food[d]&&db.food[d].length;}).sort().reverse();
+  var days=Object.keys(db.food).filter(function(d){return d!==iso(viewing)&&db.food[d]&&db.food[d].length;}).sort().reverse();
   var seen={}, out=[];
   for(var i=0;i<days.length && out.length<8;i++){
     var arr=db.food[days[i]];
@@ -371,20 +371,20 @@ function drawMeals(){
   });
 }
 function logMeal(i){
-  var m=db.meals[i]; if(!m)return; var k=iso(TODAY);
+  var m=db.meals[i]; if(!m)return; var k=iso(viewing);
   m.items.forEach(function(x){ foodFor(k).push({name:x.name,amt:x.amt,cal:x.cal,protein:x.protein,carbs:x.carbs,fat:x.fat,fiber:x.fiber,src:"meal",ts:Date.now()}); });
   save(); drawFood(); toast("Logged "+m.name);
 }
 function copyYesterday(){
-  var y=new Date(TODAY); y.setDate(y.getDate()-1);
+  var y=new Date(viewing); y.setDate(y.getDate()-1);
   var src=db.food[iso(y)]||[];
-  if(!src.length){ toast("Nothing logged yesterday"); return; }
-  var k=iso(TODAY);
+  if(!src.length){ toast("Nothing logged the day before"); return; }
+  var k=iso(viewing);
   src.forEach(function(x){ foodFor(k).push({name:x.name,amt:x.amt,cal:x.cal,protein:x.protein,carbs:x.carbs,fat:x.fat,fiber:x.fiber,src:"copy",ts:Date.now()}); });
   save(); drawFood(); toast("Copied "+src.length+" items from yesterday");
 }
 function saveTodayAsMeal(){
-  var list=foodFor(iso(TODAY));
+  var list=foodFor(iso(viewing));
   if(!list.length){ toast("Log some food first"); return; }
   var name=window.prompt("Name this meal (e.g. \"Breakfast\", \"Post-workout\"):","");
   if(!name||!name.trim())return;
@@ -394,10 +394,10 @@ function saveTodayAsMeal(){
 document.getElementById("copyYest").addEventListener("click",copyYesterday);
 document.getElementById("saveMeal").addEventListener("click",saveTodayAsMeal);
 Array.prototype.forEach.call(document.querySelectorAll("#dayType button"),function(b){
-  b.addEventListener("click",function(){db.dtype[iso(TODAY)]=b.dataset.t;save();drawFood();});
+  b.addEventListener("click",function(){db.dtype[iso(viewing)]=b.dataset.t;save();drawFood();});
 });
 
-function addFood(item){ foodFor(iso(TODAY)).push(item); save(); drawFood(); toast("Logged "+Math.round(item.protein)+"g protein"); }
+function addFood(item){ foodFor(iso(viewing)).push(item); save(); drawFood(); toast("Logged "+Math.round(item.protein)+"g protein"); }
 function scaleMacros(per,grams){var f=grams/100;return {cal:per.cal*f,protein:per.p*f,carbs:per.c*f,fat:per.f*f,fiber:per.fib*f};}
 
 /* modals */
@@ -466,15 +466,15 @@ function toast(msg){var t=document.getElementById("toast");t.textContent=msg;t.c
 
 /* ---------- forms ---------- */
 document.getElementById("wForm").addEventListener("submit",function(ev){ev.preventDefault();
-  var v=parseFloat(document.getElementById("wIn").value);if(isNaN(v))return;var k=iso(TODAY);
+  var v=parseFloat(document.getElementById("wIn").value);if(isNaN(v))return;var k=iso(viewing);
   db.weights=db.weights.filter(function(x){return x.d!==k;});db.weights.push({d:k,v:v});save();
   document.getElementById("wIn").value="";drawWeight();});
 document.getElementById("sForm").addEventListener("submit",function(ev){ev.preventDefault();
   var l=document.getElementById("sLift").value.trim(),w=parseFloat(document.getElementById("sWt").value),r=parseInt(document.getElementById("sReps").value,10);
-  if(!l||isNaN(w)||isNaN(r))return;db.lifts.push({lift:l,wt:w,reps:r,d:iso(TODAY)});save();this.reset();drawLifts();});
+  if(!l||isNaN(w)||isNaN(r))return;db.lifts.push({lift:l,wt:w,reps:r,d:iso(viewing)});save();this.reset();drawLifts();});
 document.getElementById("rForm").addEventListener("submit",function(ev){ev.preventDefault();
   var m=parseFloat(document.getElementById("rMi").value),t=document.getElementById("rTime").value.trim();
-  if(isNaN(m)||!t)return;db.runs.push({mi:m,t:t,d:iso(TODAY)});save();this.reset();drawRuns();});
+  if(isNaN(m)||!t)return;db.runs.push({mi:m,t:t,d:iso(viewing)});save();this.reset();drawRuns();});
 
 /* export / import / reset */
 document.getElementById("exportBtn").addEventListener("click",function(){
@@ -520,8 +520,55 @@ function streakText(){var n=0,d=new Date(TODAY);for(var i=0;i<400;i++){if(isDayD
   b.addEventListener("click",function(){var cur=r.getAttribute("data-theme");if(!cur)cur=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";var next=cur==="dark"?"light":"dark";r.setAttribute("data-theme",next);try{localStorage.setItem("platform.theme",next);}catch(e){}});
 })();
 
+/* ---------- date navigation (calendar flow across all tabs) ---------- */
+function setViewing(d){ viewing=new Date(d); viewing.setHours(0,0,0,0); drawDateBar(); renderAll(); }
+function shiftDay(n){ var d=new Date(viewing); d.setDate(d.getDate()+n); setViewing(d); }
+function drawDateBar(){
+  var lbl=document.getElementById("dateLabel"), tb=document.getElementById("dateToday");
+  if(!lbl) return;
+  var isToday=iso(viewing)===iso(TODAY);
+  var y=new Date(TODAY); y.setDate(y.getDate()-1);
+  var tm=new Date(TODAY); tm.setDate(tm.getDate()+1);
+  var txt = isToday ? "Today" : iso(viewing)===iso(y) ? "Yesterday" : iso(viewing)===iso(tm) ? "Tomorrow"
+          : viewing.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"});
+  lbl.textContent="📅 "+txt;
+  tb.classList.toggle("show",!isToday);
+}
+document.getElementById("datePrev").addEventListener("click",function(){shiftDay(-1);});
+document.getElementById("dateNext").addEventListener("click",function(){shiftDay(1);});
+document.getElementById("dateToday").addEventListener("click",function(){setViewing(new Date());});
+document.getElementById("dateLabel").addEventListener("click",openCalendar);
+
+/* ---------- month calendar ---------- */
+var calMonth=null; // Date anchored to first of the shown month
+function openCalendar(){ calMonth=new Date(viewing.getFullYear(),viewing.getMonth(),1); drawCalendar(); openModal("calModal"); }
+function drawCalendar(){
+  document.getElementById("calTitle").textContent=calMonth.toLocaleDateString(undefined,{month:"long",year:"numeric"});
+  var first=new Date(calMonth), startDow=first.getDay();
+  var daysIn=new Date(calMonth.getFullYear(),calMonth.getMonth()+1,0).getDate();
+  var cells="";
+  for(var i=0;i<startDow;i++) cells+='<div class="calcell empty"></div>';
+  for(var day=1;day<=daysIn;day++){
+    var d=new Date(calMonth.getFullYear(),calMonth.getMonth(),day), k=iso(d);
+    var hasFood=db.food[k]&&db.food[k].length;
+    var hasTrain=isDayDone(k,d.getDay());
+    var cls="calcell"+(k===iso(TODAY)?" today":"")+(k===iso(viewing)?" sel":"");
+    var dots=(hasFood?'<span class="dot food"></span>':"")+(hasTrain?'<span class="dot train"></span>':"");
+    cells+='<button class="'+cls+'" data-d="'+k+'">'+day+(dots?'<span class="dots">'+dots+'</span>':"")+'</button>';
+  }
+  document.getElementById("calGrid").innerHTML=cells;
+  Array.prototype.forEach.call(document.querySelectorAll("#calGrid .calcell[data-d]"),function(b){
+    b.addEventListener("click",function(){ var p=b.dataset.d.split("-"); setViewing(new Date(+p[0],+p[1]-1,+p[2])); closeModal("calModal"); });
+  });
+}
+document.getElementById("calPrev").addEventListener("click",function(){calMonth.setMonth(calMonth.getMonth()-1);drawCalendar();});
+document.getElementById("calNext").addEventListener("click",function(){calMonth.setMonth(calMonth.getMonth()+1);drawCalendar();});
+Array.prototype.forEach.call(document.querySelectorAll("#calModal [data-close]"),function(b){b.addEventListener("click",function(){closeModal("calModal");});});
+document.getElementById("calModal").addEventListener("click",function(e){if(e.target===this)closeModal("calModal");});
+
 /* ---------- render ---------- */
 function renderAll(){drawRail();drawTrainCard();drawLifts();drawRuns();drawWeight();drawFood();drawHealthStats();updateFoot();}
+drawDateBar();
 renderAll();
 setSync(cfg.url&&cfg.tok?"ok":"");
 if(cfg.url&&cfg.tok){ pull(function(){renderAll();}); pullHealth(); }
@@ -622,10 +669,10 @@ document.getElementById("coachSend").addEventListener("click",coachSend);
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=11").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=12").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=11; // bump this + version.json + ?v= on every release
+var APPVER=12; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})

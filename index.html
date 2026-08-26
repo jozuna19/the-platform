@@ -159,6 +159,36 @@
   .xdel:hover,.xdel:active{color:#e5484d;background:rgba(229,72,77,.12)}
   .wtag{font-size:13px;opacity:.75}
   .empty{color:var(--muted);font-size:12.5px;padding:10px 0}
+  /* ---- date bar ---- */
+  .datebar{display:flex;align-items:center;gap:6px;margin:0 0 16px}
+  .dnav{flex:none;width:38px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--surface);
+    color:var(--text);font-size:20px;line-height:1;cursor:pointer}
+  .dnav:hover{border-color:var(--gold)}
+  .dlabel{flex:1;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--surface);
+    color:var(--text);font-family:var(--display);font-weight:700;font-size:13.5px;letter-spacing:.03em;cursor:pointer}
+  .dlabel:hover{border-color:var(--gold)}
+  .dtoday{flex:none;height:38px;padding:0 14px;border-radius:10px;border:1px solid var(--red);background:var(--red);
+    color:#fff;font-family:var(--display);font-weight:800;font-size:11px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;display:none}
+  .dtoday.show{display:block}
+  /* ---- calendar ---- */
+  .calhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+  .calhead h3{font-size:16px}
+  .caldow{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px}
+  .caldow span{text-align:center;font-size:10px;font-weight:800;color:var(--muted);font-family:var(--display)}
+  .calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+  .calcell{aspect-ratio:1;border:1px solid transparent;border-radius:9px;background:var(--surface-2);
+    color:var(--text);font-size:13px;font-variant-numeric:tabular-nums;cursor:pointer;position:relative;
+    display:flex;align-items:center;justify-content:center;padding:0}
+  .calcell.empty{background:transparent;cursor:default}
+  .calcell:hover:not(.empty){border-color:var(--gold)}
+  .calcell.today{border-color:var(--red);color:var(--red);font-weight:800}
+  .calcell.sel{background:var(--red);color:#fff;border-color:var(--red)}
+  .calcell .dots{position:absolute;bottom:4px;left:0;right:0;display:flex;gap:3px;justify-content:center}
+  .calcell .dot{width:5px;height:5px;border-radius:50%}
+  .dot.food{background:var(--gold)}
+  .dot.train{background:var(--green)}
+  .callegend{margin-top:12px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:4px}
+  .callegend .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
   /* ---- AI coach ---- */
   #coachFab{position:fixed;right:16px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:190;
     width:56px;height:56px;border-radius:50%;border:none;background:var(--red);color:#fff;font-size:24px;
@@ -283,6 +313,13 @@
   <button class="tab" role="tab" data-view="train" aria-selected="true">Train</button>
   <button class="tab" role="tab" data-view="food" aria-selected="false">Food</button>
   <button class="tab" role="tab" data-view="body" aria-selected="false">Body</button>
+</div>
+
+<div class="datebar" id="dateBar">
+  <button class="dnav" id="datePrev" aria-label="Previous day">‹</button>
+  <button class="dlabel" id="dateLabel" aria-label="Pick a date">Today</button>
+  <button class="dnav" id="dateNext" aria-label="Next day">›</button>
+  <button class="dtoday" id="dateToday">Today</button>
 </div>
 
 <!-- TRAIN -->
@@ -418,6 +455,20 @@
   </div>
 </div>
 
+<div class="modal" id="calModal">
+  <div class="sheet">
+    <button class="close" data-close>×</button>
+    <div class="calhead">
+      <button class="dnav" id="calPrev" aria-label="Previous month">‹</button>
+      <h3 id="calTitle">Month</h3>
+      <button class="dnav" id="calNext" aria-label="Next month">›</button>
+    </div>
+    <div class="caldow"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
+    <div class="calgrid" id="calGrid"></div>
+    <div class="callegend"><span class="dot food"></span> food logged &nbsp; <span class="dot train"></span> workout done</div>
+  </div>
+</div>
+
 
 <button id="coachFab" aria-label="Open AI coach">💬</button>
 <div id="coachPanel" aria-hidden="true">
@@ -434,6 +485,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=11"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>
