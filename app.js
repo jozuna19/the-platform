@@ -566,5 +566,26 @@ var foodTab=document.querySelector('.tab[data-view="food"]'); if(foodTab)foodTab
 setInterval(pullHealth,60000);
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=5").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=6").catch(function(){}); }
+
+/* ---------- auto-update: tell John when a new version is live ---------- */
+var APPVER=6; // bump this + version.json + ?v= on every release
+function checkUpdate(){
+  fetch("version.json?t="+Date.now(),{cache:"no-store"})
+   .then(function(r){return r.ok?r.json():null;})
+   .then(function(j){ if(j && j.v && j.v>APPVER){ document.getElementById("updateBar").classList.add("on"); } })
+   .catch(function(){});
+}
+function doUpdate(){
+  var btn=document.getElementById("updateGo"); if(btn)btn.textContent="Updating…";
+  var jobs=[];
+  if(window.caches){ jobs.push(caches.keys().then(function(ks){return Promise.all(ks.map(function(k){return caches.delete(k);}));})); }
+  if(navigator.serviceWorker){ jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){return Promise.all(rs.map(function(x){return x.unregister();}));})); }
+  // Only reload AFTER caches + SW are actually cleared (avoids the half-update race).
+  Promise.all(jobs).then(function(){ location.reload(); }).catch(function(){ location.reload(); });
+}
+document.getElementById("updateGo").addEventListener("click",doUpdate);
+checkUpdate();
+document.addEventListener("visibilitychange",function(){if(!document.hidden)checkUpdate();});
+setInterval(checkUpdate,120000);
 })();
