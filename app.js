@@ -531,6 +531,10 @@ var foodTab=document.querySelector('.tab[data-view="food"]'); if(foodTab)foodTab
 setInterval(pullHealth,60000);
 
 /* ---------- AI Coach (available on every tab) ---------- */
+function mdlite(s){ return String(s)
+  .replace(/\*\*(.+?)\*\*/g,"$1").replace(/__(.+?)__/g,"$1")
+  .replace(/`(.+?)`/g,"$1")
+  .replace(/^#{1,6}\s*/gm,"").replace(/^\s*[-*]\s+/gm,"• "); }
 function coachContext(){
   var k=iso(TODAY), tg=targets(k), tot=dayTotals(k);
   var hd=HEALTH[k]||{}; var burned=Math.round(hd.kcalToday||0);
@@ -568,7 +572,7 @@ function coachRender(){
   if(!db.chat.length){ box.innerHTML='<div id="coachEmpty">👋 I\'m your coach. I can see your macros, weight, workouts and program — and I remember what you tell me.<br><br>Try: <i>"how much protein do I have left?"</i>, <i>"I ate a chick-fil-a sandwich"</i>, or <i>"remember my left knee hurts on heavy squats"</i>.</div>'; return; }
   box.innerHTML=db.chat.map(function(m){
     var cls=m.role==="user"?"user":(m.role==="act"?"act":"bot");
-    return '<div class="cmsg '+cls+'">'+esc(m.content)+'</div>';
+    return '<div class="cmsg '+cls+'">'+esc(mdlite(m.content))+'</div>';
   }).join("");
   box.scrollTop=box.scrollHeight;
 }
@@ -618,10 +622,10 @@ document.getElementById("coachSend").addEventListener("click",coachSend);
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=10").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=11").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=10; // bump this + version.json + ?v= on every release
+var APPVER=11; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
