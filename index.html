@@ -189,6 +189,23 @@
   .dot.train{background:var(--green)}
   .callegend{margin-top:12px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:4px}
   .callegend .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+  /* ---- flexible session ---- */
+  .exdel{background:none;border:none;color:var(--muted);font-size:16px;line-height:1;padding:0 2px 0 6px;cursor:pointer;align-self:center}
+  .exdel:hover{color:var(--red)}
+  .sessbtns{display:flex;gap:8px;margin-top:14px}
+  .sessbtns .btn{flex:1;font-size:11px;padding:11px 6px}
+  .sugwrap{margin-top:12px;padding-top:12px;border-top:1px solid var(--border)}
+  .sugchips{display:flex;flex-wrap:wrap;gap:7px}
+  .sugchip{background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:99px;
+    padding:8px 13px;font-size:12.5px;cursor:pointer}
+  .sugchip:hover{border-color:var(--gold)}
+  .exfilters{display:flex;gap:6px;margin:10px 0 12px;flex-wrap:wrap}
+  .exfilters button{background:var(--surface-2);border:1px solid var(--border);color:var(--muted);border-radius:99px;
+    padding:7px 13px;font-family:var(--display);font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+  .exfilters button.on{border-color:var(--red);color:var(--text);background:var(--surface)}
+  .exchips{display:flex;flex-wrap:wrap;gap:7px;max-height:44vh;overflow-y:auto;margin-bottom:14px}
+  .excustom{display:flex;gap:8px;align-items:center}
+  .excustom input{background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px;font:inherit;font-size:13px;min-width:0}
   /* ---- AI coach ---- */
   #coachFab{position:fixed;right:16px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:190;
     width:56px;height:56px;border-radius:50%;border:none;background:var(--red);color:#fff;font-size:24px;
@@ -455,6 +472,20 @@
   </div>
 </div>
 
+<div class="modal" id="exModal">
+  <div class="sheet">
+    <button class="close" data-close>×</button>
+    <h3>Add exercise</h3>
+    <div class="exfilters" id="exFilters"></div>
+    <div class="exchips" id="exChips"></div>
+    <div class="excustom">
+      <input id="exCustomName" placeholder="Custom exercise name" style="flex:2">
+      <input id="exCustomSets" placeholder="3 × 10" style="flex:1">
+      <button class="btn" id="exCustomAdd">Add</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="calModal">
   <div class="sheet">
     <button class="close" data-close>×</button>
@@ -485,6 +516,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=12"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>

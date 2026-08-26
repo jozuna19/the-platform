@@ -188,6 +188,21 @@ export default {
         const out = await chatCoach(body, env);
         return json(out, 200, env);
       }
+      if (url.pathname === "/ai/suggest" && request.method === "POST") {
+        const b = await request.json();
+        const sys = `You are a strength coach. The athlete is on a CUT (247->195 lb, high protein), lifting with a squat/bench/deadlift focus.
+Today is a ${String(b.dayType || "upper").toUpperCase()} day ("${b.dayName || ""}"). Focus: ${b.focus || ""}.
+They have already got these exercises in today's session: ${(b.done || []).join(", ") || "none yet"}.
+Suggest 1-2 additional exercises that fit a ${String(b.dayType || "upper")} day and complement (not duplicate) what they've done, biased toward hypertrophy on a cut.
+Return ONLY JSON: {"suggestions":[{"name":string,"scheme":"3 × 10","why":"short reason"}]}. No prose.`;
+        const data = await anthropic(sys, [], [{ role: "user", content: "Suggest now." }], env);
+        const texts = (data.content || []).filter((x) => x.type === "text" && x.text).map((x) => x.text);
+        const raw = (texts.length ? texts[texts.length - 1] : "").trim();
+        const m = raw.match(/\{[\s\S]*\}/);
+        let parsed = { suggestions: [] };
+        try { parsed = JSON.parse(m ? m[0] : raw); } catch (e) {}
+        return json({ suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions.slice(0, 2) : [] }, 200, env);
+      }
       if (url.pathname === "/health" && request.method === "GET") {
         // App reads Apple Health data (never writes it).
         const raw = await env.PLATFORM_STATE.get(HEALTH_KEY);

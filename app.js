@@ -3,17 +3,23 @@
 
 /* ---------- The Cut program (by weekday 0=Sun..6=Sat) ---------- */
 var PROGRAM = {
-  2:{name:"Lower",tag:"The one that has to happen",focus:"Main lifts stop 2 reps short of failure.",
+  2:{name:"Lower",type:"lower",tag:"The one that has to happen",focus:"Main lifts stop 2 reps short of failure.",
      ex:[["Squat","4 × 5"],["Trap-Bar Deadlift / RDL","3 × 6"],["Split Squat","3 × 10 ea"],["Leg Curl","3 × 12"],["Standing Calf Raise","3 × 15"]]},
-  4:{name:"Upper A",tag:"Push + pull",focus:"Leave 2 in the tank on the barbell work.",
+  4:{name:"Upper A",type:"upper",tag:"Push + pull",focus:"Leave 2 in the tank on the barbell work.",
      ex:[["Bench","4 × 6"],["Row","4 × 8"],["Overhead Press","3 × 8"],["Lat Pulldown","3 × 10"]]},
-  5:{name:"Upper B",tag:"Hypertrophy + delts",focus:"Chase the taper. Accessories closer to failure.",
+  5:{name:"Upper B",type:"upper",tag:"Hypertrophy + delts",focus:"Chase the taper. Accessories closer to failure.",
      ex:[["Incline DB Press","4 × 8"],["Chest-Supported Row","4 × 10"],["Lateral Raise","3 × 15"],["Curls","3 × 12"],["Triceps","3 × 12"]]},
-  0:{name:"Lower B",tag:"Optional 4th",focus:"If Tuesday slipped, this becomes the real lower day.",optional:true,
+  0:{name:"Lower B",type:"lower",tag:"Optional 4th",focus:"If Tuesday slipped, this becomes the real lower day.",optional:true,
      ex:[["Leg Press","3 × 12"],["Walking Lunge","3 × 10 ea"],["Leg Extension","3 × 15"],["Leg Curl","3 × 15"],["Abs","3 × 12"]]},
   3:{name:"Soccer",cardio:true,focus:"~2.5 hrs. This is your conditioning — don't add cardio on top.",note:"Hydrate hard."},
   1:{name:"Rest",rest:true,focus:"Recovery + Amy. Hit protein, get your steps.",note:""},
   6:{name:"Rest",rest:true,focus:"Recovery + Amy. Hit protein, get your steps.",note:""}
+};
+/* exercise library for the picker + rule-based suggestions, by day type */
+var EXLIB = {
+  upper:["Bench","Incline DB Press","Overhead Press","Barbell Row","Chest-Supported Row","Lat Pulldown","Pull-up","Seated Cable Row","Lateral Raise","Rear Delt Fly","Face Pull","Biceps Curl","Hammer Curl","Triceps Pushdown","Overhead Triceps Ext","Dip","Cable Fly"],
+  lower:["Back Squat","Front Squat","Leg Press","Romanian Deadlift","Trap-Bar Deadlift","Split Squat","Walking Lunge","Bulgarian Split Squat","Leg Curl","Leg Extension","Hip Thrust","Standing Calf Raise","Seated Calf Raise","Hack Squat"],
+  core:["Plank","Hanging Leg Raise","Cable Crunch","Ab Wheel","Russian Twist","Back Extension"]
 };
 var SHORT={0:"Lower B",1:"Rest",2:"Lower",3:"Soccer",4:"Upper A",5:"Upper B",6:"Rest"};
 var LET=["S","M","T","W","T","F","S"];
@@ -113,10 +119,31 @@ Array.prototype.forEach.call(document.querySelectorAll(".tab"),function(t){
 });
 
 /* ---------- TRAIN: rail + card ---------- */
-function totalSets(dow){var p=PROGRAM[dow];if(!p.ex)return 0;return p.ex.reduce(function(a,e){return a+parseInt(e[1],10);},0);}
-function dayEntry(k){return db.log[k]||(db.log[k]={sets:{},done:false});}
-function doneSets(k,dow){var e=db.log[k];if(!e||!e.sets)return 0;var p=PROGRAM[dow];if(!p.ex)return 0;var n=0;for(var i=0;i<p.ex.length;i++)n+=(e.sets[i]||0);return n;}
-function isDayDone(k,dow){var p=PROGRAM[dow];var e=db.log[k];if(!e)return false;if(p.rest)return false;if(p.cardio)return !!e.done;return totalSets(dow)>0&&doneSets(k,dow)>=totalSets(dow);}
+function schemeTarget(scheme){var n=parseInt(scheme,10);return isNaN(n)?1:n;}
+function dayEntry(k){return db.log[k]||(db.log[k]={done:false});}
+// Editable per-day session. Migrates old {sets:{i:count}} → named exercise list; seeds from program.
+function session(k,dow){
+  var p=PROGRAM[dow];
+  var e=db.log[k]||(db.log[k]={});
+  if(!e.exercises){
+    e.exercises=(p.ex||[]).map(function(x,i){
+      return {name:x[0],scheme:x[1],target:schemeTarget(x[1]),done:(e.sets&&e.sets[i])?e.sets[i]:0};
+    });
+    if(e.sets)delete e.sets;
+    if(e.finished===undefined)e.finished=false;
+  }
+  return e;
+}
+function totalSets(k,dow){var s=session(k,dow);return s.exercises.reduce(function(a,x){return a+(x.target||0);},0);}
+function doneSets(k,dow){var s=session(k,dow);return s.exercises.reduce(function(a,x){return a+Math.min(x.done||0,x.target||0);},0);}
+function isDayDone(k,dow){
+  var p=PROGRAM[dow];if(p.rest)return false;
+  var e=db.log[k];if(!e)return false;
+  if(p.cardio)return !!e.done;
+  if(e.finished)return true;
+  if(!e.exercises||!e.exercises.length)return false;
+  return e.exercises.every(function(x){return (x.done||0)>=(x.target||0);});
+}
 
 function drawRail(){
   var ws=weekStart(viewing),html="";
@@ -144,22 +171,121 @@ function drawTrainCard(){
     h+='<div class="cardio"><div class="big">'+(e.done?"Logged":"Not logged yet")+'</div><p>'+p.note+'</p>'+
       '<button class="btn '+(e.done?"done":"")+'" id="cardioBtn">'+(e.done?"✓ Complete":"Mark complete")+'</button></div>';
   }else{
-    var tot=totalSets(dow),got=doneSets(k,dow),pct=tot?Math.round(got/tot*100):0;
+    var s0=session(k,dow), ex=s0.exercises;
+    var tot=ex.reduce(function(a,x){return a+(x.target||0);},0);
+    var got=ex.reduce(function(a,x){return a+Math.min(x.done||0,x.target||0);},0);
+    var pct=tot?Math.round(got/tot*100):0, allDone=isDayDone(k,dow);
     h+='<div class="bar'+(pct>=100?" full":"")+'"><span style="width:'+pct+'%"></span></div>'+
-      '<div class="barlabel"><span>'+(pct>=100?"Session complete":"Sets logged")+'</span><span class="num">'+got+' / '+tot+'</span></div><ul class="ex">';
-    var e2=dayEntry(k);
-    p.ex.forEach(function(x,i){var n=parseInt(x[1],10),c=e2.sets[i]||0;
-      h+='<li'+(c>=n?' data-complete="1"':'')+'><div class="exname">'+x[0]+'<small>'+x[1]+'</small></div><div class="sets">';
-      for(var s=1;s<=n;s++)h+='<button class="set" data-ex="'+i+'" data-s="'+s+'" aria-pressed="'+(s<=c)+'" aria-label="'+x[0]+' set '+s+'">'+s+'</button>';
+      '<div class="barlabel"><span>'+(s0.finished?"Workout finished":(pct>=100?"All sets done":"Sets logged"))+'</span><span class="num">'+ex.length+' ex &middot; '+got+' / '+tot+' sets</span></div><ul class="ex">';
+    ex.forEach(function(x,i){var n=x.target||0,c=x.done||0;
+      h+='<li'+(c>=n?' data-complete="1"':'')+'><div class="exname">'+esc(x.name)+'<small>'+esc(x.scheme||"")+'</small></div><div class="sets">';
+      for(var st=1;st<=n;st++)h+='<button class="set" data-ex="'+i+'" data-s="'+st+'" aria-pressed="'+(st<=c)+'">'+st+'</button>';
+      h+='<button class="exdel" data-exdel="'+i+'" aria-label="Remove '+esc(x.name)+'">×</button>';
       h+='</div></li>';});
     h+='</ul>';
+    h+='<div class="sessbtns">'+
+      '<button class="btn ghost" id="addExBtn">➕ Add exercise</button>'+
+      '<button class="btn ghost" id="suggestBtn">💡 Suggest more</button>'+
+      '</div>'+
+      '<div id="suggestBox"></div>'+
+      '<button class="btn full '+(s0.finished?"done":"")+'" id="finishBtn" style="margin-top:10px">'+(s0.finished?"✓ Workout finished — reopen":"✅ Finish workout")+'</button>';
   }
   document.getElementById("trainCard").innerHTML=h;
   var cb=document.getElementById("cardioBtn");
   if(cb)cb.addEventListener("click",function(){var e=dayEntry(k);e.done=!e.done;save();drawRail();drawTrainCard();});
   Array.prototype.forEach.call(document.querySelectorAll("#trainCard .set"),function(b){
-    b.addEventListener("click",function(){var e=dayEntry(k),i=+b.dataset.ex,s=+b.dataset.s;e.sets[i]=(e.sets[i]===s)?s-1:s;save();drawRail();drawTrainCard();});
+    b.addEventListener("click",function(){var s=session(k,dow),i=+b.dataset.ex,v=+b.dataset.s;var x=s.exercises[i];x.done=(x.done===v)?v-1:v;save();drawRail();drawTrainCard();});
   });
+  Array.prototype.forEach.call(document.querySelectorAll("#trainCard .exdel"),function(b){
+    b.addEventListener("click",function(){var s=session(k,dow);s.exercises.splice(+b.dataset.exdel,1);save();drawRail();drawTrainCard();});
+  });
+  var ab=document.getElementById("addExBtn"); if(ab)ab.addEventListener("click",function(){openExPicker(k,dow);});
+  var sg=document.getElementById("suggestBtn"); if(sg)sg.addEventListener("click",function(){drawSuggestions(k,dow);});
+  var fb=document.getElementById("finishBtn"); if(fb)fb.addEventListener("click",function(){var s=session(k,dow);s.finished=!s.finished;save();drawRail();drawTrainCard();toast(s.finished?"Workout logged":"Reopened");});
+}
+/* exercise picker modal */
+var exPickCtx=null;
+function openExPicker(k,dow){
+  exPickCtx={k:k,dow:dow,filter:(PROGRAM[dow].type||"upper")};
+  drawExPicker();
+  document.getElementById("exCustomName").value="";
+  document.getElementById("exCustomSets").value="";
+  openModal("exModal");
+}
+function drawExPicker(){
+  var f=exPickCtx.filter;
+  var filters=[["upper","Upper"],["lower","Lower"],["core","Core"]];
+  document.getElementById("exFilters").innerHTML=filters.map(function(x){
+    return '<button data-f="'+x[0]+'"'+(f===x[0]?' class="on"':'')+'>'+x[1]+'</button>';
+  }).join("");
+  var have={}; session(exPickCtx.k,exPickCtx.dow).exercises.forEach(function(x){have[x.name.toLowerCase()]=1;});
+  var pool=(EXLIB[f]||[]).filter(function(n){return !have[n.toLowerCase()];});
+  document.getElementById("exChips").innerHTML=pool.length?pool.map(function(n){
+    return '<button class="sugchip" data-add="'+esc(n)+'">+ '+esc(n)+'</button>';
+  }).join(""):'<div style="color:var(--muted);font-size:12.5px;padding:8px 0">All '+f+' exercises are already in today.</div>';
+  Array.prototype.forEach.call(document.querySelectorAll("#exFilters button"),function(b){
+    b.addEventListener("click",function(){exPickCtx.filter=b.dataset.f;drawExPicker();});
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("#exChips .sugchip"),function(b){
+    b.addEventListener("click",function(){addExercise(exPickCtx.k,exPickCtx.dow,b.dataset.add,"3 × 10");drawExPicker();toast("Added "+b.dataset.add);});
+  });
+}
+(function(){
+  var add=document.getElementById("exCustomAdd");
+  if(add)add.addEventListener("click",function(){
+    var n=document.getElementById("exCustomName").value.trim();
+    var sc=document.getElementById("exCustomSets").value.trim()||"3 × 10";
+    if(!n)return;
+    addExercise(exPickCtx.k,exPickCtx.dow,n,sc);
+    document.getElementById("exCustomName").value="";document.getElementById("exCustomSets").value="";
+    closeModal("exModal");
+  });
+})();
+
+/* add an exercise to the day's session */
+function addExercise(k,dow,name,scheme){
+  var s=session(k,dow);
+  s.exercises.push({name:name,scheme:scheme||"3 × 10",target:schemeTarget(scheme||"3 × 10"),done:0,added:true});
+  save(); drawRail(); drawTrainCard();
+}
+/* rule-based suggestions filtered by the day's type (upper/lower), excluding what's already in */
+function suggestList(k,dow){
+  var p=PROGRAM[dow], type=p.type||"upper";
+  var have={}; session(k,dow).exercises.forEach(function(x){have[x.name.toLowerCase()]=1;});
+  var pool=(EXLIB[type]||[]).concat(EXLIB.core);
+  return pool.filter(function(n){return !have[n.toLowerCase()];}).slice(0,6);
+}
+function drawSuggestions(k,dow){
+  var box=document.getElementById("suggestBox"); if(!box)return;
+  var list=suggestList(k,dow), type=(PROGRAM[dow].type||"upper");
+  var chips=list.map(function(n){return '<button class="sugchip" data-sug="'+esc(n)+'">+ '+esc(n)+'</button>';}).join("");
+  box.innerHTML='<div class="sugwrap"><div class="eyebrow" style="margin:4px 0 8px">'+type.toUpperCase()+'-day ideas</div>'+
+    '<div class="sugchips">'+chips+'</div>'+
+    '<button class="btn ghost full" id="askCoachBtn" style="margin-top:8px">🤖 Ask coach for a smart pick</button>'+
+    '<div id="askCoachOut" style="font-size:12.5px;color:var(--muted);margin-top:8px"></div></div>';
+  Array.prototype.forEach.call(box.querySelectorAll(".sugchip"),function(b){
+    b.addEventListener("click",function(){addExercise(k,dow,b.dataset.sug,"3 × 10");});
+  });
+  var ac=document.getElementById("askCoachBtn"); if(ac)ac.addEventListener("click",function(){askCoachSuggest(k,dow);});
+}
+function askCoachSuggest(k,dow){
+  var out=document.getElementById("askCoachOut"); if(!out)return;
+  if(!cfg.url||!cfg.tok){out.textContent="Connect cloud sync first (⤢) to use the AI pick.";return;}
+  var p=PROGRAM[dow]; var done=session(k,dow).exercises.map(function(x){return x.name;});
+  out.textContent="Thinking…";
+  fetch(cfg.url.replace(/\/$/,"")+"/ai/suggest",{method:"POST",
+    headers:{"Authorization":"Bearer "+cfg.tok,"Content-Type":"application/json"},
+    body:JSON.stringify({dayType:p.type||"upper",dayName:p.name,focus:p.focus,done:done})})
+   .then(function(r){return r.ok?r.json():null;})
+   .then(function(j){
+     var s=(j&&j.suggestions)||[];
+     if(!s.length){out.textContent="No pick right now — try the ideas above.";return;}
+     out.innerHTML=s.map(function(x){return '<button class="sugchip" data-n="'+esc(x.name)+'" data-sc="'+esc(x.scheme||"3 × 10")+'">+ '+esc(x.name)+' <span style="opacity:.7">'+esc(x.scheme||"")+'</span></button>'+(x.why?('<div style="margin:2px 0 8px;font-size:11.5px">'+esc(x.why)+'</div>'):"");}).join("");
+     Array.prototype.forEach.call(out.querySelectorAll(".sugchip"),function(b){
+       b.addEventListener("click",function(){addExercise(k,dow,b.dataset.n,b.dataset.sc);});
+     });
+   })
+   .catch(function(){out.textContent="Couldn't reach the coach. Try again.";});
 }
 
 /* ---------- strength + runs ---------- */
@@ -595,7 +721,12 @@ function coachContext(){
   var dow=TODAY.getDay(), p=PROGRAM[dow];
   var todayW = p.rest ? {type:"Rest day", focus:p.focus}
              : p.cardio ? {type:p.name, focus:p.focus}
-             : {name:p.name, focus:p.focus, exercises:p.ex.map(function(e){return e[0]+" "+e[1];})};
+             : {name:p.name, type:p.type, focus:p.focus, plannedExercises:p.ex.map(function(e){return e[0]+" "+e[1];})};
+  // what he's ACTUALLY done/edited today (flexible session)
+  if(!p.rest && !p.cardio){
+    var le=db.log[k];
+    if(le&&le.exercises){ todayW.actualSession=le.exercises.map(function(x){return x.name+" "+(x.done||0)+"/"+(x.target||0)+" sets";}); todayW.finished=!!le.finished; }
+  }
   return {
     today:k, trainingDay:dtypeFor(k), goal:"247 -> 195 lb cut",
     profile:{ startWeight:START, goalWeight:195, currentWeight:curWeight,
@@ -669,10 +800,10 @@ document.getElementById("coachSend").addEventListener("click",coachSend);
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=12").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=13").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=12; // bump this + version.json + ?v= on every release
+var APPVER=13; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
