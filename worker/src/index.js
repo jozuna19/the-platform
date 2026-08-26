@@ -227,9 +227,11 @@ export default {
             touched++;
           });
           // daily metrics (steps, Move cal, exercise min, distance).
-          // Sum THIS payload's samples per day at full precision, then SET (replace)
-          // — idempotent so repeated 1-min resyncs never double-count.
-          const agg = {}; // date -> {key -> sum}
+          // HAE sends per-sample points, and incremental syncs send only NEW samples.
+          // So we DEDUPE by each sample's own timestamp and SUM the unique ones:
+          // - accumulates across delta pushes (fixes "stale/low numbers")
+          // - a re-sent sample overwrites the same key, so no double-counting.
+          const touchedDays = {};
           (body.data.metrics || []).forEach((m) => {
             const name = String(m.name || "").toLowerCase();
             let key = null;
@@ -238,18 +240,30 @@ export default {
             else if (name === "apple_exercise_time") key = "exerciseMin";
             else if (name === "walking_running_distance") key = "distanceMi";
             if (!key) return;
-            (m.data || []).forEach((pt) => {
+            (m.data || []).forEach((pt, idx) => {
               const q = num(pt.qty); if (q === null) return;
-              const date = String(pt.date || today).slice(0, 10);
-              agg[date] = agg[date] || {};
-              agg[date][key] = (agg[date][key] || 0) + q;
+              const stamp = String(pt.date || pt.start || "");
+              const date = (stamp || today).slice(0, 10);
+              const day = getDay(date);
+              day.samples = day.samples || {};
+              day.samples[key] = day.samples[key] || {};
+              day.samples[key][stamp || (key + idx)] = q; // upsert by sample timestamp
+              touchedDays[date] = true;
             });
           });
-          Object.keys(agg).forEach((date) => {
+          // recompute each touched day's metric totals from its unique samples
+          Object.keys(touchedDays).forEach((date) => {
             const day = getDay(date); day.metrics = day.metrics || {};
-            Object.keys(agg[date]).forEach((key) => { day.metrics[key] = agg[date][key]; });
+            Object.keys(day.samples || {}).forEach((key) => {
+              let s = 0; const bag = day.samples[key];
+              Object.keys(bag).forEach((id) => { s += bag[id]; });
+              day.metrics[key] = s;
+            });
             day.updated = Date.now();
           });
+          // prune sample bags older than 4 days to keep the store small
+          const cut = new Date(Date.now() - 4 * 86400000).toISOString().slice(0, 10);
+          Object.keys(hs).forEach((d) => { if (d < cut && hs[d]) delete hs[d].samples; });
           // exercise calories for the day = sum of that day's workout kcal (MFP-style)
           Object.keys(hs).forEach((d) => {
             hs[d].kcalToday = (hs[d].workouts || []).reduce((a, x) => a + (x.kcal || 0), 0);
