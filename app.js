@@ -504,5 +504,5 @@ var foodTab=document.querySelector('.tab[data-view="food"]'); if(foodTab)foodTab
 setInterval(pullHealth,60000);
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=4").catch(function(){}); }
 })();
