@@ -108,6 +108,32 @@ export default {
         const items = await parseFood(text.trim(), env);
         return json({ items }, 200, env);
       }
+      if (url.pathname === "/health" && request.method === "POST") {
+        // Apple Health push from an iOS Shortcut (workout-ends automation).
+        // Accepts { date?, kcalToday?, workout?:{type,kcal,min} } — numbers may
+        // arrive as strings from Shortcuts, so coerce defensively.
+        const body = await request.json();
+        const num = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
+        const raw = await env.PLATFORM_STATE.get(STATE_KEY);
+        const st = raw ? JSON.parse(raw) : {};
+        st.health = st.health || {};
+        const date = (body.date || new Date().toISOString().slice(0, 10)).slice(0, 10);
+        const day = st.health[date] || (st.health[date] = { kcalToday: 0, workouts: [] });
+        const kt = num(body.kcalToday);
+        if (kt !== null) day.kcalToday = Math.round(kt);
+        if (body.workout && (body.workout.type || body.workout.kcal != null)) {
+          day.workouts.push({
+            type: String(body.workout.type || "Workout").slice(0, 40),
+            kcal: Math.round(num(body.workout.kcal) || 0),
+            min: Math.round(num(body.workout.min) || 0),
+            ts: Date.now()
+          });
+        }
+        day.updated = Date.now();
+        st.meta = st.meta || {}; st.meta.updated = Date.now();
+        await env.PLATFORM_STATE.put(STATE_KEY, JSON.stringify(st));
+        return json({ ok: true, date: date, day: day }, 200, env);
+      }
       return json({ error: "not found" }, 404, env);
     } catch (e) {
       return json({ error: String(e.message || e) }, 500, env);

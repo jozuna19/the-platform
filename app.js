@@ -41,6 +41,7 @@ var db, cfg;
 try{ db=JSON.parse(localStorage.getItem(KEY))||{}; }catch(e){ db={}; }
 db.log=db.log||{}; db.weights=db.weights||[]; db.waist=db.waist||[]; db.lifts=db.lifts||[];
 db.runs=db.runs||[]; db.food=db.food||{}; db.dtype=db.dtype||{}; db.meta=db.meta||{updated:0};
+db.health=db.health||{}; db.settings=db.settings||{eatBack:false};
 try{ cfg=JSON.parse(localStorage.getItem(CFGKEY))||{}; }catch(e){ cfg={}; }
 
 var TODAY=new Date(), viewing=new Date(TODAY);
@@ -196,13 +197,33 @@ function drawFood(){
   var dt=dtypeFor(k);
   Array.prototype.forEach.call(document.querySelectorAll("#dayType button"),function(b){b.setAttribute("aria-pressed",b.dataset.t===dt?"true":"false");});
   var tg=targets(k),tot=dayTotals(k);
+  var hd=db.health[k]||{kcalToday:0,workouts:[]};
+  var burned=Math.round(hd.kcalToday||0);
+  var eatBack=!!db.settings.eatBack;
+  var calTarget=tg.cal + (eatBack?burned:0);
   function ring(cls,val,tgt,unit,label){
-    var pct=Math.min(100,Math.round(val/tgt*100)),over=val>tgt+ (unit==="g"&&label==="protein"?999:0);
+    var pct=Math.min(100,Math.round(val/tgt*100));
     return '<div class="ring '+cls+'"'+(val>tgt?' data-over="1"':'')+'><div class="rv num">'+Math.round(val)+'</div>'+
       '<div class="rt">/ '+tgt+' '+unit+'</div><div class="rk">'+label+'</div><div class="mbar"><span style="width:'+pct+'%"></span></div></div>';
   }
   document.getElementById("rings").innerHTML=
-    ring("",tot.cal,tg.cal,"kcal","calories")+ring("prot",tot.p,tg.p,"g","protein")+ring("",tot.fib,tg.fib,"g","fiber");
+    ring("",tot.cal,calTarget,"kcal","calories")+ring("prot",tot.p,tg.p,"g","protein")+ring("",tot.fib,tg.fib,"g","fiber");
+  // MyFitnessPal-style exercise line (from Apple Health)
+  var ex=document.getElementById("exercise");
+  var remaining=calTarget-Math.round(tot.cal);
+  var wlist=(hd.workouts||[]).map(function(w){return '<div style="display:flex;justify-content:space-between;font-size:12.5px;padding:5px 0;border-bottom:1px solid var(--border)"><span>'+esc(w.type)+(w.min?(' · '+w.min+' min'):'')+'</span><span class="num" style="color:var(--gold)">'+w.kcal+' kcal</span></div>';}).join("");
+  ex.innerHTML=
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'+
+      '<div style="font-size:13.5px">🔥 <b>Exercise</b> <span style="color:var(--muted)">— Apple Health</span><br>'+
+      '<span class="num" style="font-size:20px;color:var(--gold)">'+burned+'</span> <span style="color:var(--muted);font-size:12px">kcal burned today</span></div>'+
+      '<label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);cursor:pointer">'+
+        '<input type="checkbox" id="eatBack" '+(eatBack?"checked":"")+' style="flex:none;width:18px;height:18px"> add to budget</label>'+
+    '</div>'+
+    (wlist?('<div style="margin-top:10px">'+wlist+'</div>'):'')+
+    '<div style="margin-top:10px;font-size:12.5px;color:var(--muted)">Remaining today: <b class="num" style="color:'+(remaining<0?"var(--red)":"var(--green)")+'">'+remaining+'</b> kcal'+
+      (eatBack?' <span style="color:var(--muted)">(budget +'+burned+' for exercise)</span>':(burned?' <span style="color:var(--muted)">· '+burned+' available if you eat back</span>':''))+'</div>';
+  var ebc=document.getElementById("eatBack");
+  if(ebc) ebc.addEventListener("change",function(){db.settings.eatBack=ebc.checked;save();drawFood();});
   // staples
   document.getElementById("staples").innerHTML=STAPLES.map(function(s,i){
     return '<button class="staple" data-i="'+i+'">'+esc(s.n)+'<small>'+s.note+'</small></button>';
