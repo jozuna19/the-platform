@@ -41,7 +41,9 @@ var db, cfg;
 try{ db=JSON.parse(localStorage.getItem(KEY))||{}; }catch(e){ db={}; }
 db.log=db.log||{}; db.weights=db.weights||[]; db.waist=db.waist||[]; db.lifts=db.lifts||[];
 db.runs=db.runs||[]; db.food=db.food||{}; db.dtype=db.dtype||{}; db.meta=db.meta||{updated:0};
-db.health=db.health||{}; db.settings=db.settings||{eatBack:false};
+db.settings=db.settings||{eatBack:false};
+if(db.health){delete db.health;} // health now lives server-side in its own store
+var HEALTH={}; // Apple Health data, read-only from the backend (never synced up)
 try{ cfg=JSON.parse(localStorage.getItem(CFGKEY))||{}; }catch(e){ cfg={}; }
 
 var TODAY=new Date(), viewing=new Date(TODAY);
@@ -59,6 +61,13 @@ function queuePush(){
   setSync("sync");
   if(syncTimer) clearTimeout(syncTimer);
   syncTimer=setTimeout(push,900);
+}
+function pullHealth(){
+  if(!cfg.url||!cfg.tok) return;
+  fetch(cfg.url.replace(/\/$/,"")+"/health",{headers:{"Authorization":"Bearer "+cfg.tok}})
+   .then(function(r){return r.ok?r.json():null;})
+   .then(function(h){ if(h){ HEALTH=h; if(document.getElementById("v-food").classList.contains("on")) drawFood(); } })
+   .catch(function(){});
 }
 function push(){
   if(!cfg.url||!cfg.tok) return;
@@ -197,7 +206,7 @@ function drawFood(){
   var dt=dtypeFor(k);
   Array.prototype.forEach.call(document.querySelectorAll("#dayType button"),function(b){b.setAttribute("aria-pressed",b.dataset.t===dt?"true":"false");});
   var tg=targets(k),tot=dayTotals(k);
-  var hd=db.health[k]||{kcalToday:0,workouts:[]};
+  var hd=HEALTH[k]||{kcalToday:0,workouts:[]};
   var burned=Math.round(hd.kcalToday||0);
   var eatBack=!!db.settings.eatBack;
   var calTarget=tg.cal + (eatBack?burned:0);
@@ -417,6 +426,7 @@ document.getElementById("cfgSave").addEventListener("click",function(){
    .then(function(r){ if(r.status===401){st.textContent="Token rejected — check it.";setSync("off");return;}
      if(!r.ok)throw new Error(r.status);
      st.textContent="Connected ✓ pulling your data…";
+     pullHealth();
      pull(function(){renderAll();updateFoot();setTimeout(function(){closeModal("setModal");},700);});})
    .catch(function(){st.textContent="Couldn't reach the backend.";setSync("off");});
 });
@@ -433,7 +443,11 @@ function streakText(){var n=0,d=new Date(TODAY);for(var i=0;i<400;i++){if(isDayD
 function renderAll(){drawRail();drawTrainCard();drawLifts();drawRuns();drawWeight();drawFood();updateFoot();}
 renderAll();
 setSync(cfg.url&&cfg.tok?"ok":"");
-if(cfg.url&&cfg.tok) pull(function(){renderAll();});
+if(cfg.url&&cfg.tok){ pull(function(){renderAll();}); pullHealth(); }
+// keep Apple Health fresh: on foreground, on Food tab, and every 60s
+document.addEventListener("visibilitychange",function(){if(!document.hidden)pullHealth();});
+var foodTab=document.querySelector('.tab[data-view="food"]'); if(foodTab)foodTab.addEventListener("click",pullHealth);
+setInterval(pullHealth,60000);
 
 /* PWA */
 if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(function(){}); }

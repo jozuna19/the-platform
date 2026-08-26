@@ -12,6 +12,7 @@
  */
 
 const STATE_KEY = "state:john";
+const HEALTH_KEY = "health:john"; // separate store: Shortcut writes, app only reads
 
 function cors(env) {
   return {
@@ -108,17 +109,22 @@ export default {
         const items = await parseFood(text.trim(), env);
         return json({ items }, 200, env);
       }
+      if (url.pathname === "/health" && request.method === "GET") {
+        // App reads Apple Health data (never writes it).
+        const raw = await env.PLATFORM_STATE.get(HEALTH_KEY);
+        return json(raw ? JSON.parse(raw) : {}, 200, env);
+      }
       if (url.pathname === "/health" && request.method === "POST") {
         // Apple Health push from an iOS Shortcut (workout-ends automation).
+        // Own KV key so the app's /state sync can never overwrite it.
         // Accepts { date?, kcalToday?, workout?:{type,kcal,min} } — numbers may
         // arrive as strings from Shortcuts, so coerce defensively.
         const body = await request.json();
         const num = (v) => { const n = parseFloat(v); return isNaN(n) ? null : n; };
-        const raw = await env.PLATFORM_STATE.get(STATE_KEY);
-        const st = raw ? JSON.parse(raw) : {};
-        st.health = st.health || {};
+        const raw = await env.PLATFORM_STATE.get(HEALTH_KEY);
+        const hs = raw ? JSON.parse(raw) : {};
         const date = (body.date || new Date().toISOString().slice(0, 10)).slice(0, 10);
-        const day = st.health[date] || (st.health[date] = { kcalToday: 0, workouts: [] });
+        const day = hs[date] || (hs[date] = { kcalToday: 0, workouts: [] });
         const kt = num(body.kcalToday);
         if (kt !== null) day.kcalToday = Math.round(kt);
         if (body.workout && (body.workout.type || body.workout.kcal != null)) {
@@ -130,8 +136,7 @@ export default {
           });
         }
         day.updated = Date.now();
-        st.meta = st.meta || {}; st.meta.updated = Date.now();
-        await env.PLATFORM_STATE.put(STATE_KEY, JSON.stringify(st));
+        await env.PLATFORM_STATE.put(HEALTH_KEY, JSON.stringify(hs));
         return json({ ok: true, date: date, day: day }, 200, env);
       }
       return json({ error: "not found" }, 404, env);
