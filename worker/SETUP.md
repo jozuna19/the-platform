@@ -34,7 +34,7 @@ That URL + the APP_TOKEN get wired into the app.
 ```bash
 TOK="<your APP_TOKEN>"
 API="https://the-platform-api.<subdomain>.workers.dev"
-curl -s "$API/health"
+curl -s "$API/healthz"
 curl -s -X PUT "$API/state" -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"hello":"world"}'
 curl -s "$API/state" -H "Authorization: Bearer $TOK"
 curl -s -X POST "$API/ai/parse" -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -d '{"text":"8 oz chicken breast and a cup of white rice"}'

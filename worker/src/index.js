@@ -88,7 +88,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors(env) });
-    if (url.pathname === "/health") return json({ ok: true }, 200, env);
+    if (url.pathname === "/healthz") return json({ ok: true }, 200, env);
 
     if (!authorized(request, env)) return json({ error: "unauthorized" }, 401, env);
 
