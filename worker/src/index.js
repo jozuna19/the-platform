@@ -143,8 +143,27 @@ export default {
             });
             touched++;
           });
+          // daily metrics (steps, Move calories, exercise minutes, distance)
+          (body.data.metrics || []).forEach((m) => {
+            const name = String(m.name || "").toLowerCase();
+            let key = null;
+            if (/step_count/.test(name)) key = "steps";
+            else if (/^active_energy/.test(name)) key = "move";
+            else if (/exercise_time/.test(name)) key = "exerciseMin";
+            else if (/walking.*running.*distance|walking_running_distance|distance_walking_running/.test(name)) key = "distanceMi";
+            if (!key) return;
+            (m.data || []).forEach((pt) => {
+              const date = String(pt.date || today).slice(0, 10);
+              const day = getDay(date); day.metrics = day.metrics || {};
+              const q = num(pt.qty); if (q === null) return;
+              day.metrics[key] = Math.round(((day.metrics[key] || 0) + q) * 10) / 10;
+              day.updated = Date.now();
+            });
+          });
           // exercise calories for the day = sum of that day's workout kcal (MFP-style)
-          Object.keys(hs).forEach((d) => { hs[d].kcalToday = hs[d].workouts.reduce((a, x) => a + (x.kcal || 0), 0); hs[d].updated = Date.now(); });
+          Object.keys(hs).forEach((d) => {
+            hs[d].kcalToday = (hs[d].workouts || []).reduce((a, x) => a + (x.kcal || 0), 0);
+          });
         } else {
           // simple Shortcut shape
           const date = (body.date || today).slice(0, 10);

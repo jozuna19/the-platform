@@ -66,7 +66,7 @@ function pullHealth(){
   if(!cfg.url||!cfg.tok) return;
   fetch(cfg.url.replace(/\/$/,"")+"/health",{headers:{"Authorization":"Bearer "+cfg.tok}})
    .then(function(r){return r.ok?r.json():null;})
-   .then(function(h){ if(h){ HEALTH=h; if(document.getElementById("v-food").classList.contains("on")) drawFood(); } })
+   .then(function(h){ if(h){ HEALTH=h; drawHealthStats(); if(document.getElementById("v-food").classList.contains("on")) drawFood(); } })
    .catch(function(){});
 }
 function push(){
@@ -192,6 +192,23 @@ function drawWeight(){
   document.getElementById("ladder").innerHTML=RUNGS.map(function(r){return '<div class="rung"'+(ref!==null&&ref<=r?' data-hit="1"':'')+'><div class="t"></div><span class="n">'+r+'</span></div>';}).join("");
   var wa=db.waist.slice().sort(function(a,b){return a.d<b.d?-1:1;});
   document.getElementById("waLast").textContent=wa.length?("Last: "+wa[wa.length-1].v.toFixed(1)+'" · '+wa[wa.length-1].d.slice(5)):"No waist logged yet.";
+}
+
+/* ---------- Apple Health stats (Body tab) ---------- */
+function drawHealthStats(){
+  var el=document.getElementById("healthStats"); if(!el) return;
+  var hd=HEALTH[iso(TODAY)]||{}, m=hd.metrics||{}, burned=Math.round(hd.kcalToday||0);
+  var have=burned||m.steps!=null||m.move!=null||m.exerciseMin!=null||m.distanceMi!=null;
+  document.getElementById("healthPanel").style.display=have?"block":"none";
+  if(!have) return;
+  function tile(v,l){return '<div class="ring"><div class="rv num">'+v+'</div><div class="rk">'+l+'</div></div>';}
+  var h="";
+  if(m.steps!=null) h+=tile(Math.round(m.steps).toLocaleString(),"steps");
+  if(m.move!=null) h+=tile(Math.round(m.move),"move cal");
+  if(m.exerciseMin!=null) h+=tile(Math.round(m.exerciseMin),"exercise min");
+  if(m.distanceMi!=null) h+=tile(m.distanceMi.toFixed(2),"miles");
+  if(burned) h+=tile(burned,"workout cal");
+  el.innerHTML=h;
 }
 
 /* ---------- FOOD ---------- */
@@ -440,7 +457,7 @@ function streakText(){var n=0,d=new Date(TODAY);for(var i=0;i<400;i++){if(isDayD
 })();
 
 /* ---------- render ---------- */
-function renderAll(){drawRail();drawTrainCard();drawLifts();drawRuns();drawWeight();drawFood();updateFoot();}
+function renderAll(){drawRail();drawTrainCard();drawLifts();drawRuns();drawWeight();drawFood();drawHealthStats();updateFoot();}
 renderAll();
 setSync(cfg.url&&cfg.tok?"ok":"");
 if(cfg.url&&cfg.tok){ pull(function(){renderAll();}); pullHealth(); }
