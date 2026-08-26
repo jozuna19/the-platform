@@ -162,16 +162,25 @@ function drawLifts(){
   var rows=db.lifts.slice().reverse().slice(0,8);
   document.getElementById("sEmpty").style.display=rows.length?"none":"block";
   document.getElementById("sBody").innerHTML=rows.map(function(x){
+    var idx=db.lifts.indexOf(x);
     var best=db.lifts.filter(function(y){return y.lift.toLowerCase()===x.lift.toLowerCase();}).every(function(y){return x.wt>=y.wt;});
-    return "<tr><td>"+esc(x.lift)+(best&&db.lifts.length>1?'<span class="pr">PR</span>':"")+'</td><td class="n">'+x.wt+'</td><td class="n">'+x.reps+'</td><td class="n">'+x.d.slice(5)+"</td></tr>";
+    return "<tr><td>"+esc(x.lift)+(best&&db.lifts.length>1?'<span class="pr">PR</span>':"")+'</td><td class="n">'+x.wt+'</td><td class="n">'+x.reps+'</td><td class="n">'+x.d.slice(5)+'</td><td class="n"><button class="xdel" data-del-lift="'+idx+'" aria-label="Delete">×</button></td></tr>';
   }).join("");
 }
+function delLift(i){ if(i<0||i>=db.lifts.length)return; db.lifts.splice(i,1); save(); drawLifts(); toast("Removed"); }
+function delRun(i){ if(i<0||i>=db.runs.length)return; db.runs.splice(i,1); save(); drawRuns(); toast("Removed"); }
+document.addEventListener("click",function(e){
+  var t=e.target;
+  if(t&&t.getAttribute&&t.getAttribute("data-del-lift")!==null){ delLift(parseInt(t.getAttribute("data-del-lift"),10)); }
+  else if(t&&t.getAttribute&&t.getAttribute("data-del-run")!==null){ delRun(parseInt(t.getAttribute("data-del-run"),10)); }
+});
 function pace(mi,t){var p=String(t).split(":").map(Number);if(p.some(isNaN)||!mi)return "—";var sec=p.length===3?p[0]*3600+p[1]*60+p[2]:p.length===2?p[0]*60+p[1]:p[0];var per=sec/mi;return Math.floor(per/60)+":"+String(Math.round(per%60)).padStart(2,"0");}
 function drawRuns(){
   var rows=db.runs.slice().reverse().slice(0,6);
   document.getElementById("rEmpty").style.display=rows.length?"none":"block";
   document.getElementById("rBody").innerHTML=rows.map(function(x){
-    return "<tr><td>"+x.mi.toFixed(1)+" mi</td><td class='n'>"+esc(x.t)+"</td><td class='n'>"+pace(x.mi,x.t)+"</td><td class='n'>"+x.d.slice(5)+"</td></tr>";
+    var idx=db.runs.indexOf(x);
+    return "<tr><td>"+x.mi.toFixed(1)+" mi</td><td class='n'>"+esc(x.t)+"</td><td class='n'>"+pace(x.mi,x.t)+"</td><td class='n'>"+x.d.slice(5)+'</td><td class="n"><button class="xdel" data-del-run="'+idx+'" aria-label="Delete">×</button></td></tr>';
   }).join("");
   var races=[["Peachtree Road Race 10K","Done · 1:11",1],["PNC Atlanta 10 Miler","Fall 2026",0],["Thanksgiving Half Marathon","Nov 2026",0]];
   document.getElementById("races").innerHTML='<div style="display:flex;flex-direction:column;gap:9px">'+races.map(function(r,i){
@@ -342,17 +351,25 @@ var zxReader=null, zxControls=null;
 document.getElementById("scanBtn").addEventListener("click",function(){
   document.getElementById("fmTitle").textContent="Scan a barcode";
   document.getElementById("fmBody").innerHTML=
-    '<video id="scanVideo" playsinline></video><div id="scanMsg" style="font-size:12.5px;color:var(--muted)">Point the camera at the barcode…</div>';
+    '<video id="scanVideo" playsinline autoplay muted style="width:100%;aspect-ratio:4/3;object-fit:cover;background:#000;border-radius:10px"></video><div id="scanMsg" style="font-size:12.5px;color:var(--muted);margin-top:6px">Starting rear camera…</div>';
   openModal("foodModal");
   loadZX(function(ok){
     if(!ok){document.getElementById("scanMsg").innerHTML='Scanner unavailable offline. Use Talk/type or Quick tap.';return;}
     try{
       zxReader=new window.ZXingBrowser.BrowserMultiFormatReader();
-      zxReader.decodeFromVideoDevice(undefined,"scanVideo",function(result,err,controls){
+      var msg=document.getElementById("scanMsg");
+      if(msg)msg.textContent="Point the rear camera at the barcode…";
+      // Force the REAR camera — phones otherwise default to the selfie cam, which can't see the barcode.
+      zxReader.decodeFromConstraints({video:{facingMode:{ideal:"environment"}}},"scanVideo",function(result,err,controls){
         zxControls=controls;
         if(result){ controls.stop(); onBarcode(result.getText()); }
+      }).catch(function(){
+        // Fallback: whatever camera the browser will give us.
+        try{ zxReader.decodeFromVideoDevice(undefined,"scanVideo",function(result,err,controls){
+          zxControls=controls; if(result){ controls.stop(); onBarcode(result.getText()); }
+        }); }catch(x){ if(msg)msg.textContent="Couldn't start the camera. Check camera permission for this site."; }
       });
-    }catch(e){document.getElementById("scanMsg").textContent="Couldn't start the camera.";}
+    }catch(e){document.getElementById("scanMsg").textContent="Couldn't start the camera. Check camera permission.";}
   });
 });
 document.getElementById("foodModal").addEventListener("click",function(e){ if(e.target===this && zxControls){try{zxControls.stop();}catch(x){}zxControls=null;} });
