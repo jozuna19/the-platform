@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B0B0C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="The Platform">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>The Platform</title>
+<style>
+  :root{
+    --ink:#0B0B0C;--panel:#141416;--panel-2:#1B1B1E;--line:#2A2A2E;
+    --fog:#8C8A90;--chalk:#EDEAE6;--red:#C8102E;--red-dim:#8E0C21;
+    --gold:#D4A63C;--gold-dim:#8A6C22;--green:#4E9F63;--green-dim:#2F6B41;
+    --bg:var(--ink);--surface:var(--panel);--surface-2:var(--panel-2);
+    --text:var(--chalk);--muted:var(--fog);--border:var(--line);
+    --display:ui-sans-serif,-apple-system,"Helvetica Neue",Arial,sans-serif;
+    --body:ui-sans-serif,-apple-system,"SF Pro Text",system-ui,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --r:10px;--maxw:780px;
+  }
+  :root[data-theme="light"]{
+    --bg:#EFECE6;--surface:#FFFFFF;--surface-2:#F6F3ED;--text:#17161A;
+    --muted:#6B6772;--border:#DCD6CC;--gold:#96701A;--green:#2F7344;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#EFECE6;--surface:#FFFFFF;--surface-2:#F6F3ED;--text:#17161A;
+      --muted:#6B6772;--border:#DCD6CC;--gold:#96701A;--green:#2F7344;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:var(--ink);--surface:var(--panel);--surface-2:var(--panel-2);
+    --text:var(--chalk);--muted:var(--fog);--border:var(--line);
+    --gold:#D4A63C;--green:#4E9F63;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--body);
+    line-height:1.5;-webkit-font-smoothing:antialiased;
+    padding:0 16px calc(80px + env(safe-area-inset-bottom));}
+  .wrap{max-width:var(--maxw);margin:0 auto}
+  .eyebrow{font-family:var(--display);font-size:10.5px;font-weight:800;
+    text-transform:uppercase;letter-spacing:.2em;color:var(--muted)}
+  h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0}
+  .num{font-variant-numeric:tabular-nums;font-family:var(--mono)}
+
+  header{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;
+    padding:calc(20px + env(safe-area-inset-top)) 0 16px;border-bottom:2px solid var(--red)}
+  .brand h1{font-size:25px;font-weight:900;letter-spacing:-.02em;text-transform:uppercase;line-height:1}
+  .brand h1 .slash{color:var(--red)}
+  .brand p{margin:5px 0 0;font-size:12px;color:var(--muted)}
+  .hbtns{display:flex;gap:8px;flex:none}
+  .icref{background:var(--surface);border:1px solid var(--border);color:var(--text);
+    width:36px;height:36px;border-radius:var(--r);cursor:pointer;font-size:15px;
+    display:flex;align-items:center;justify-content:center}
+  .icref:hover{border-color:var(--gold)}
+  #syncDot{position:relative}
+  #syncDot::after{content:"";position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:var(--muted)}
+  #syncDot[data-s="ok"]::after{background:var(--green)}
+  #syncDot[data-s="sync"]::after{background:var(--gold)}
+  #syncDot[data-s="off"]::after{background:var(--red)}
+
+  /* tabs */
+  .tabs{display:flex;gap:6px;margin:16px 0 18px;position:sticky;top:0;z-index:20;
+    background:var(--bg);padding:8px 0}
+  .tab{flex:1;background:var(--surface);border:1px solid var(--border);color:var(--muted);
+    font-family:var(--display);font-size:11px;font-weight:800;letter-spacing:.08em;
+    text-transform:uppercase;padding:11px 4px;border-radius:var(--r);cursor:pointer}
+  .tab[aria-selected="true"]{border-color:var(--red);color:var(--text);background:var(--surface-2)}
+  .view{display:none}
+  .view.on{display:block}
+
+  .rail{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin:0 0 18px}
+  .day{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+    padding:9px 3px 10px;text-align:center;cursor:pointer;position:relative}
+  .day:hover{border-color:var(--muted)}
+  .day .dl{font-family:var(--display);font-size:10px;font-weight:800;letter-spacing:.12em;color:var(--muted);display:block}
+  .day .dt{font-family:var(--display);font-size:8.5px;font-weight:700;text-transform:uppercase;
+    letter-spacing:.03em;margin-top:5px;color:var(--muted);line-height:1.25;display:block}
+  .day[data-viewing="1"]{border-color:var(--red);background:var(--surface-2)}
+  .day[data-viewing="1"] .dl,.day[data-viewing="1"] .dt{color:var(--text)}
+  .day[data-today="1"] .dl{color:var(--red)}
+  .day[data-done="1"]::after{content:"";position:absolute;top:6px;right:6px;width:6px;height:6px;border-radius:50%;background:var(--gold)}
+
+  .card{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--red);
+    border-radius:var(--r);padding:20px;margin-bottom:14px}
+  .card .head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .card h2{font-size:22px;font-weight:900;text-transform:uppercase;letter-spacing:-.01em;line-height:1.1}
+  .card .date{font-size:12px;color:var(--muted)}
+  .focus{margin:12px 0 0;padding:9px 12px;background:var(--surface-2);border-radius:8px;font-size:12.5px;color:var(--muted)}
+  .focus b{color:var(--gold);font-weight:700}
+  .bar{height:4px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin:16px 0 4px}
+  .bar span{display:block;height:100%;background:var(--red);width:0;transition:width .25s}
+  .bar.full span{background:var(--gold)}
+  .barlabel{font-size:11px;color:var(--muted);display:flex;justify-content:space-between}
+
+  ul.ex{list-style:none;margin:16px 0 0;padding:0;display:flex;flex-direction:column;gap:2px}
+  ul.ex li{display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--border)}
+  ul.ex li:last-child{border-bottom:none}
+  .exname{flex:1;min-width:0;font-size:14.5px}
+  .exname small{display:block;font-size:11.5px;color:var(--muted);margin-top:1px}
+  li[data-complete="1"] .exname{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--red)}
+  .sets{display:flex;gap:5px;flex:none;flex-wrap:wrap;justify-content:flex-end;max-width:150px}
+  .set{width:24px;height:24px;border-radius:6px;border:1.5px solid var(--border);background:transparent;
+    cursor:pointer;padding:0;font-family:var(--mono);font-size:10px;color:var(--muted);
+    display:flex;align-items:center;justify-content:center}
+  .set[aria-pressed="true"]{background:var(--red);border-color:var(--red);color:#fff}
+  .set:focus-visible,.day:focus-visible,button:focus-visible,input:focus-visible,.tab:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+  .cardio{text-align:center;padding:22px 8px}
+  .cardio .big{font-family:var(--display);font-size:15px;font-weight:800;text-transform:uppercase;letter-spacing:.06em}
+  .cardio p{color:var(--muted);font-size:13px;margin:8px 0 16px}
+  .btn{font-family:var(--display);font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;
+    padding:11px 20px;border-radius:8px;cursor:pointer;border:1px solid var(--red);background:var(--red);color:#fff}
+  .btn:hover{background:var(--red-dim);border-color:var(--red-dim)}
+  .btn.ghost{background:transparent;color:var(--text);border-color:var(--border)}
+  .btn.ghost:hover{border-color:var(--gold)}
+  .btn.done{background:var(--gold);border-color:var(--gold);color:#17161A}
+  .btn.full{width:100%}
+  .btn.gold{background:var(--gold);border-color:var(--gold);color:#17161A}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:620px){.grid2{grid-template-columns:1fr}.rail{gap:3px}}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;margin-bottom:14px}
+  .panel h3{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);margin-bottom:12px}
+
+  .weigh{display:flex;align-items:baseline;gap:8px}
+  .weigh .v{font-family:var(--mono);font-size:36px;font-weight:700;letter-spacing:-.02em;line-height:1}
+  .weigh .u{font-size:13px;color:var(--muted)}
+  .weigh .delta{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--gold);text-align:right}
+  .avgline{font-size:11.5px;color:var(--muted);margin-top:6px}
+  .ladder{display:flex;gap:4px;margin:14px 0 6px}
+  .rung{flex:1;text-align:center}
+  .rung .t{height:5px;border-radius:99px;background:var(--surface-2)}
+  .rung[data-hit="1"] .t{background:var(--gold)}
+  .rung .n{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:5px;display:block}
+  .rung[data-hit="1"] .n{color:var(--gold)}
+
+  form.row{display:flex;gap:6px;margin-top:12px}
+  input,select,textarea{flex:1;min-width:0;background:var(--surface-2);border:1px solid var(--border);
+    color:var(--text);border-radius:8px;padding:10px 11px;font-size:14px;font-family:var(--mono)}
+  input::placeholder,textarea::placeholder{color:var(--muted);font-family:var(--body)}
+  textarea{font-family:var(--body);line-height:1.4;resize:vertical}
+  .mini{background:transparent;border:1px solid var(--border);color:var(--text);border-radius:8px;
+    padding:0 14px;cursor:pointer;font-size:16px;flex:none}
+  .mini:hover{border-color:var(--gold);color:var(--gold)}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+  th{text-align:left;font-family:var(--display);font-size:10px;font-weight:800;text-transform:uppercase;
+    letter-spacing:.1em;color:var(--muted);padding:0 0 7px;border-bottom:1px solid var(--border)}
+  td{padding:8px 0;border-bottom:1px solid var(--border)}
+  tr:last-child td{border-bottom:none}
+  td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right}
+  .pr{color:var(--gold);font-size:10px;font-family:var(--display);font-weight:800;letter-spacing:.08em;margin-left:6px}
+  .empty{color:var(--muted);font-size:12.5px;padding:10px 0}
+
+  /* food dashboard */
+  .rings{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;text-align:center;margin-bottom:14px}
+  .ring{background:var(--surface-2);border-radius:10px;padding:14px 6px}
+  .ring .rv{font-family:var(--mono);font-size:19px;font-weight:700;line-height:1}
+  .ring .rt{font-size:11px;color:var(--muted);margin-top:3px}
+  .ring .rk{font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-top:6px}
+  .ring .mbar{height:4px;background:rgba(255,255,255,.06);border-radius:99px;overflow:hidden;margin-top:8px}
+  .ring .mbar span{display:block;height:100%;width:0;background:var(--green)}
+  .ring[data-over="1"] .mbar span{background:var(--red)}
+  .ring.prot .mbar span{background:var(--gold)}
+  .daytype{display:flex;gap:6px;margin-bottom:12px}
+  .daytype button{flex:1;font-family:var(--display);font-size:10.5px;font-weight:800;letter-spacing:.06em;
+    text-transform:uppercase;padding:8px;border-radius:8px;border:1px solid var(--border);
+    background:var(--surface-2);color:var(--muted);cursor:pointer}
+  .daytype button[aria-pressed="true"]{border-color:var(--gold);color:var(--gold)}
+
+  .logbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+  .logbtns .btn{font-size:11px}
+  .staples{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:7px}
+  .staple{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 6px;
+    text-align:center;cursor:pointer;font-size:12px}
+  .staple:hover{border-color:var(--gold)}
+  .staple small{display:block;color:var(--muted);font-size:10px;font-family:var(--mono);margin-top:2px}
+
+  .foodrow{display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--border)}
+  .foodrow:last-child{border-bottom:none}
+  .foodrow .fn{flex:1;min-width:0;font-size:13.5px}
+  .foodrow .fn small{display:block;color:var(--muted);font-size:11px;font-family:var(--mono)}
+  .foodrow .fk{font-family:var(--mono);font-size:12px;text-align:right;flex:none}
+  .foodrow .del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;flex:none;padding:2px 4px}
+  .foodrow .del:hover{color:var(--red)}
+
+  /* modal */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:flex-end;justify-content:center;z-index:100}
+  .modal.on{display:flex}
+  .sheet{background:var(--surface);border:1px solid var(--border);border-radius:16px 16px 0 0;
+    width:100%;max-width:var(--maxw);padding:20px 18px calc(24px + env(safe-area-inset-bottom));max-height:88vh;overflow:auto}
+  @media(min-width:620px){.modal{align-items:center}.sheet{border-radius:16px}}
+  .sheet h3{font-size:15px;font-weight:800;margin-bottom:14px}
+  .sheet .close{float:right;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer}
+  .amtrow{display:flex;gap:8px;margin:12px 0}
+  .prev{background:var(--surface-2);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:13px;margin-bottom:14px}
+  .prev b{color:var(--gold)}
+  #scanVideo{width:100%;border-radius:10px;background:#000;margin-bottom:12px}
+  .aiitem{background:var(--surface-2);border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:13px}
+  .aiitem .aihead{display:flex;justify-content:space-between;gap:8px}
+  .aiitem input{margin-top:8px}
+
+  section{margin-top:0}
+  footer{margin-top:22px;padding-top:16px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted);
+    display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center}
+  footer .lk{background:none;border:none;color:var(--muted);text-decoration:underline;cursor:pointer;font-size:11.5px;padding:0}
+  footer .lk:hover{color:var(--red)}
+  .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);
+    background:var(--gold);color:#17161A;font-family:var(--display);font-weight:800;font-size:12px;letter-spacing:.04em;
+    padding:10px 18px;border-radius:99px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:200}
+  .toast.on{opacity:1}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="brand">
+    <h1>The Platform<span class="slash">.</span></h1>
+    <p id="tagline">247 to 195 &middot; the cut</p>
+  </div>
+  <div class="hbtns">
+    <button class="icref" id="syncDot" title="Sync / settings" aria-label="Sync and settings">⤢</button>
+    <button class="icref" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">◐</button>
+  </div>
+</header>
+
+<div class="tabs" role="tablist">
+  <button class="tab" role="tab" data-view="train" aria-selected="true">Train</button>
+  <button class="tab" role="tab" data-view="food" aria-selected="false">Food</button>
+  <button class="tab" role="tab" data-view="body" aria-selected="false">Body</button>
+</div>
+
+<!-- TRAIN -->
+<div class="view on" id="v-train">
+  <nav class="rail" id="rail" aria-label="Week"></nav>
+  <article class="card" id="trainCard"></article>
+  <section class="panel">
+    <h3>Strength Log</h3>
+    <form class="row" id="sForm">
+      <input id="sLift" placeholder="Lift" aria-label="Lift name" style="flex:2">
+      <input id="sWt" type="number" step="5" placeholder="lb" aria-label="Weight" style="flex:.8">
+      <input id="sReps" type="number" step="1" placeholder="reps" aria-label="Reps" style="flex:.8">
+      <button class="mini" type="submit" aria-label="Save lift">+</button>
+    </form>
+    <table><thead><tr><th>Lift</th><th style="text-align:right">Wt</th><th style="text-align:right">Reps</th><th style="text-align:right">Date</th></tr></thead>
+    <tbody id="sBody"></tbody></table>
+    <div class="empty" id="sEmpty">Nothing logged yet. Meet best: 485 squat &middot; 309 bench &middot; 562 deadlift.</div>
+  </section>
+  <section class="panel">
+    <h3>Runs &middot; Triple Peach</h3>
+    <form class="row" id="rForm">
+      <input id="rMi" type="number" step="0.1" placeholder="miles" aria-label="Miles" style="flex:1">
+      <input id="rTime" placeholder="time (42:30)" aria-label="Time" style="flex:1.4">
+      <button class="mini" type="submit" aria-label="Save run">+</button>
+    </form>
+    <table><thead><tr><th>Dist</th><th style="text-align:right">Time</th><th style="text-align:right">Pace</th><th style="text-align:right">Date</th></tr></thead>
+    <tbody id="rBody"></tbody></table>
+    <div class="empty" id="rEmpty">No runs logged yet.</div>
+    <div class="races" id="races" style="margin-top:14px"></div>
+  </section>
+</div>
+
+<!-- FOOD -->
+<div class="view" id="v-food">
+  <article class="card" id="foodCard" style="border-left-color:var(--gold)">
+    <div class="head"><h2>Today's Fuel</h2><span class="date" id="foodDate"></span></div>
+    <div class="daytype" id="dayType">
+      <button data-t="train" aria-pressed="true">Training day</button>
+      <button data-t="rest" aria-pressed="false">Rest day</button>
+    </div>
+    <div class="rings" id="rings"></div>
+  </article>
+  <section class="panel">
+    <h3>Log Food</h3>
+    <div class="logbtns">
+      <button class="btn gold" id="talkBtn">🎤 Talk / type it</button>
+      <button class="btn ghost" id="scanBtn">📷 Scan barcode</button>
+    </div>
+    <div class="eyebrow" style="margin:4px 0 8px">Quick tap</div>
+    <div class="staples" id="staples"></div>
+  </section>
+  <section class="panel">
+    <h3>Today's Log</h3>
+    <div id="foodLog"></div>
+    <div class="empty" id="foodEmpty">Nothing logged yet today.</div>
+  </section>
+</div>
+
+<!-- BODY -->
+<div class="view" id="v-body">
+  <div class="panel">
+    <h3>Bodyweight &middot; 7-day trend</h3>
+    <div class="weigh">
+      <span class="v num" id="wNow">—</span><span class="u">lb</span>
+      <span class="delta num" id="wDelta"></span>
+    </div>
+    <div class="avgline" id="wAvg"></div>
+    <div class="ladder" id="ladder"></div>
+    <form class="row" id="wForm">
+      <input id="wIn" type="number" step="0.1" min="120" max="400" placeholder="Log today's weight" aria-label="Weight">
+      <button class="mini" type="submit" aria-label="Save weight">+</button>
+    </form>
+  </div>
+  <div class="panel">
+    <h3>Waist &middot; navel, relaxed</h3>
+    <form class="row" id="waForm">
+      <input id="waIn" type="number" step="0.1" placeholder="inches" aria-label="Waist">
+      <button class="mini" type="submit" aria-label="Save waist">+</button>
+    </form>
+    <div class="avgline" id="waLast"></div>
+  </div>
+  <div class="panel">
+    <h3>The Cut &middot; targets</h3>
+    <div class="macros" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center">
+      <div class="ring"><div class="rv num">1,900</div><div class="rk">kcal train</div></div>
+      <div class="ring"><div class="rv num">185</div><div class="rk">g protein</div></div>
+      <div class="ring"><div class="rv num">30</div><div class="rk">g fiber</div></div>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-top:12px">Rest days ~1,825. Recalibrate at week 3: losing &gt;3 lb/wk add 200; &lt;1 lb/wk cut 200. Protein is non-negotiable.</p>
+  </div>
+</div>
+
+<footer>
+  <span id="footNote">Cloud sync off &middot; <span id="streak"></span></span>
+  <span style="display:flex;gap:14px">
+    <button class="lk" id="exportBtn">Export</button>
+    <button class="lk" id="importBtn">Import</button>
+    <button class="lk" id="reset">Reset</button>
+  </span>
+</footer>
+</div>
+
+<!-- settings modal -->
+<div class="modal" id="setModal">
+  <div class="sheet">
+    <button class="close" data-close>×</button>
+    <h3>Cloud sync</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin-bottom:12px">Paste your API token to sync across devices. Stored on this device only — never in the app's code.</p>
+    <label class="eyebrow">API URL</label>
+    <input id="cfgUrl" placeholder="https://the-platform-api...workers.dev" style="width:100%;margin:6px 0 12px">
+    <label class="eyebrow">App token</label>
+    <input id="cfgTok" placeholder="paste APP_TOKEN" style="width:100%;margin:6px 0 12px" autocomplete="off">
+    <button class="btn full" id="cfgSave">Connect &amp; sync</button>
+    <p id="cfgStatus" style="font-size:12px;color:var(--muted);margin-top:10px"></p>
+  </div>
+</div>
+
+<!-- add-food modal -->
+<div class="modal" id="foodModal">
+  <div class="sheet">
+    <button class="close" data-close>×</button>
+    <h3 id="fmTitle">Add food</h3>
+    <div id="fmBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+name = "the-platform-api"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+# KV namespace holding John's single synced JSON blob.
+# The id is filled in after `npx wrangler kv namespace create PLATFORM_STATE`.
+[[kv_namespaces]]
+binding = "PLATFORM_STATE"
+id = "a691e592db894c0f83a4a4057febbe7a"
+
+[vars]
+# The GitHub Pages origin allowed to call this API (CORS).
+ALLOWED_ORIGIN = "https://jozuna19.github.io"
+# Model used to parse natural-language food entries.
+AI_MODEL = "claude-haiku-4-5-20251001"
+
+# Secrets (NOT stored here — set with `npx wrangler secret put`):
+#   ANTHROPIC_API_KEY   your Anthropic key (server-side only)
+#   APP_TOKEN           a long random string; the app sends it to prove it's you
