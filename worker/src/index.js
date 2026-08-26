@@ -95,8 +95,11 @@ John is on an aggressive but sustainable cut: from 247 lb toward ~195, roughly 1
 You are his coach, food logger, and accountability partner. Be direct, concise, and practical - he likes casual, no fluff, action-first answers. Never lecture.
 
 You are given, each message:
-- CONTEXT: his live data (today's calories/protein/fiber and what's remaining, recent weight + trend, recent workouts from Apple Health, today's training day, his saved memory notes).
+- CONTEXT: his live data. This includes his full weekly training split (CONTEXT.weeklySplit), TODAY'S exact workout with the exercises and sets (CONTEXT.todayWorkout), his profile/stats (CONTEXT.profile: start/goal/current weight, meet bests, gym 1RMs, training style), today's calories/protein/fiber and remaining, recent weights, recent lifts, Apple Health workouts, and his logging streak.
 - MEMORY: durable facts he's told you before. Treat these as true and use them.
+
+CRITICAL: You already KNOW his program and today's workout from CONTEXT.todayWorkout and CONTEXT.weeklySplit. When he asks "what's my workout today" or "what am I supposed to do", answer directly with today's actual exercises and sets from CONTEXT.todayWorkout. NEVER say you don't have his split saved - you do, it's in CONTEXT.
+Write plainly. Do not use em-dashes or en-dashes; use short sentences or commas instead.
 
 You can take actions with tools:
 - log_food: log one or more foods he says he ate (estimate macros; use web_search for specific branded/restaurant items).
@@ -119,28 +122,40 @@ const CHAT_TOOLS = [
 ];
 const CLIENT_TOOLS = { log_food:1, log_weight:1, log_lift:1, remember:1 };
 
+async function anthropic(system, tools, messages, env) {
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({ model: env.AI_MODEL || "claude-haiku-4-5-20251001", max_tokens: 1024, system, tools, messages }),
+  });
+  if (!r.ok) { const t = await r.text(); throw new Error("anthropic " + r.status + ": " + t.slice(0, 300)); }
+  return r.json();
+}
+
 async function chatCoach(body, env) {
   const ctx = body.context ? ("CONTEXT (live data):\n" + JSON.stringify(body.context)) : "";
   const mem = (body.memory && body.memory.length) ? ("MEMORY (durable facts about John):\n- " + body.memory.join("\n- ")) : "";
   const system = COACH_SYSTEM + (ctx ? "\n\n" + ctx : "") + (mem ? "\n\n" + mem : "");
-  const msgs = Array.isArray(body.messages) ? body.messages.slice(-24) : [];
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({
-      model: env.AI_MODEL || "claude-haiku-4-5-20251001",
-      max_tokens: 1024,
-      system: system,
-      tools: CHAT_TOOLS,
-      messages: msgs,
-    }),
-  });
-  if (!r.ok) { const t = await r.text(); throw new Error("anthropic " + r.status + ": " + t.slice(0, 300)); }
-  const data = await r.json();
-  const blocks = data.content || [];
-  const reply = blocks.filter((b) => b.type === "text" && b.text).map((b) => b.text).join("\n").trim();
-  const actions = blocks.filter((b) => b.type === "tool_use" && CLIENT_TOOLS[b.name]).map((b) => ({ tool: b.name, input: b.input }));
-  return { reply: reply || "…", actions };
+  const messages = (Array.isArray(body.messages) ? body.messages.slice(-24) : []).map((m) => ({ role: m.role, content: m.content }));
+
+  const actions = [];
+  let replyParts = [];
+  // Agent loop: let the model call client tools (log_food/weight/lift/remember),
+  // acknowledge each so its turn continues, and capture the final spoken reply.
+  for (let step = 0; step < 4; step++) {
+    const data = await anthropic(system, CHAT_TOOLS, messages, env);
+    const blocks = data.content || [];
+    const txt = blocks.filter((b) => b.type === "text" && b.text).map((b) => b.text).join("\n").trim();
+    if (txt) replyParts.push(txt);
+    const clientCalls = blocks.filter((b) => b.type === "tool_use" && CLIENT_TOOLS[b.name]);
+    if (data.stop_reason !== "tool_use" || !clientCalls.length) break;
+    // record the actions for the client to actually execute
+    clientCalls.forEach((b) => actions.push({ tool: b.name, input: b.input }));
+    // feed the assistant turn back + acknowledge each client tool so the model can finish talking
+    messages.push({ role: "assistant", content: blocks });
+    messages.push({ role: "user", content: clientCalls.map((b) => ({ type: "tool_result", tool_use_id: b.id, content: "Done." })) });
+  }
+  return { reply: replyParts.join("\n").trim() || "Done.", actions };
 }
 
 export default {

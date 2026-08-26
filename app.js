@@ -536,8 +536,22 @@ function coachContext(){
   var hd=HEALTH[k]||{}; var burned=Math.round(hd.kcalToday||0);
   var eatBack=!!db.settings.eatBack, calTarget=tg.cal+(eatBack?burned:0);
   var w=db.weights.slice().sort(function(a,b){return a.d<b.d?-1:1;});
+  var curWeight=w.length?w[w.length-1].v:START;
+  // full weekly split from the program
+  var split={};
+  for(var d=0;d<7;d++){ var pp=PROGRAM[d]; var dn=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d];
+    split[dn]=pp.rest?"Rest":(pp.cardio?pp.name:(pp.name+": "+pp.ex.map(function(e){return e[0]+" "+e[1];}).join(", ")+(pp.optional?" (optional)":""))); }
+  var dow=TODAY.getDay(), p=PROGRAM[dow];
+  var todayW = p.rest ? {type:"Rest day", focus:p.focus}
+             : p.cardio ? {type:p.name, focus:p.focus}
+             : {name:p.name, focus:p.focus, exercises:p.ex.map(function(e){return e[0]+" "+e[1];})};
   return {
     today:k, trainingDay:dtypeFor(k), goal:"247 -> 195 lb cut",
+    profile:{ startWeight:START, goalWeight:195, currentWeight:curWeight,
+      meetBests:{squat:485,bench:309,deadlift:562}, gymLifts:{squat1RM:385,bench1RM:260},
+      training:"The Cut program: lifts 3-4x/week (squat/bench/deadlift focus) + Wednesday soccer for conditioning. Cut targets ~1900 kcal/186g protein training days, 1825/185 rest days." },
+    todayWorkout:todayW,
+    weeklySplit:split,
     calories:{eaten:Math.round(tot.cal),target:calTarget,remaining:calTarget-Math.round(tot.cal)},
     protein:{eaten:Math.round(tot.p),target:tg.p,remaining:tg.p-Math.round(tot.p)},
     fiber:{eaten:Math.round(tot.fib),target:tg.fib},
@@ -604,10 +618,10 @@ document.getElementById("coachSend").addEventListener("click",coachSend);
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=9").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=10").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=9; // bump this + version.json + ?v= on every release
+var APPVER=10; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
