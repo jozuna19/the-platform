@@ -1,6 +1,6 @@
 /* The Platform — service worker: NETWORK-FIRST so app updates always land,
    cache only as the offline fallback. */
-var CACHE = "platform-v2-4";
+var CACHE = "platform-v2-5";
 var SHELL = ["./", "./index.html", "./app.js", "./manifest.webmanifest", "./icon-180.png", "./icon-512.png"];
 
 self.addEventListener("install", function (e) {
