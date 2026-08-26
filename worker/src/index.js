@@ -90,6 +90,59 @@ async function parseFood(text, env) {
   return Array.isArray(parsed.items) ? parsed.items : [];
 }
 
+const COACH_SYSTEM = `You are the AI coach built into John's personal fitness app "The Platform".
+John is on an aggressive but sustainable cut: from 247 lb toward ~195, roughly 1,900 kcal and ~185g protein on training days (a bit less on rest days), high protein, lifting 3-4x/week (squat/bench/deadlift focus, meet bests 485/309/562) plus Wednesday soccer for conditioning.
+You are his coach, food logger, and accountability partner. Be direct, concise, and practical - he likes casual, no fluff, action-first answers. Never lecture.
+
+You are given, each message:
+- CONTEXT: his live data (today's calories/protein/fiber and what's remaining, recent weight + trend, recent workouts from Apple Health, today's training day, his saved memory notes).
+- MEMORY: durable facts he's told you before. Treat these as true and use them.
+
+You can take actions with tools:
+- log_food: log one or more foods he says he ate (estimate macros; use web_search for specific branded/restaurant items).
+- log_weight: record a bodyweight in lb.
+- log_lift: record a strength set (lift name, weight lb, reps).
+- remember: save a durable fact about John for the future (injuries, preferences, goals, schedule). Use this whenever he tells you something worth remembering long-term.
+- web_search: look up real nutrition facts / info when useful.
+
+Rules:
+- When he clearly states he ate something, LOG it with log_food (don't just describe it). Confirm briefly in your reply.
+- Use his real numbers from CONTEXT when he asks "how much protein do I have left" etc.
+- Keep replies short. One or two tight paragraphs max unless he asks for detail.`;
+
+const CHAT_TOOLS = [
+  { type: "web_search_20250305", name: "web_search", max_uses: 3 },
+  { name: "log_food", description: "Log food John ate to today's food log.", input_schema: { type: "object", properties: { items: { type: "array", items: { type: "object", properties: { name: {type:"string"}, amt: {type:"string"}, cal:{type:"number"}, protein:{type:"number"}, carbs:{type:"number"}, fat:{type:"number"}, fiber:{type:"number"} }, required:["name","cal","protein"] } } }, required: ["items"] } },
+  { name: "log_weight", description: "Record John's bodyweight for today.", input_schema: { type: "object", properties: { lb: {type:"number"} }, required:["lb"] } },
+  { name: "log_lift", description: "Record a strength set.", input_schema: { type: "object", properties: { lift:{type:"string"}, wt:{type:"number"}, reps:{type:"number"} }, required:["lift","wt","reps"] } },
+  { name: "remember", description: "Save a durable fact about John for future conversations.", input_schema: { type: "object", properties: { note:{type:"string"} }, required:["note"] } },
+];
+const CLIENT_TOOLS = { log_food:1, log_weight:1, log_lift:1, remember:1 };
+
+async function chatCoach(body, env) {
+  const ctx = body.context ? ("CONTEXT (live data):\n" + JSON.stringify(body.context)) : "";
+  const mem = (body.memory && body.memory.length) ? ("MEMORY (durable facts about John):\n- " + body.memory.join("\n- ")) : "";
+  const system = COACH_SYSTEM + (ctx ? "\n\n" + ctx : "") + (mem ? "\n\n" + mem : "");
+  const msgs = Array.isArray(body.messages) ? body.messages.slice(-24) : [];
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({
+      model: env.AI_MODEL || "claude-haiku-4-5-20251001",
+      max_tokens: 1024,
+      system: system,
+      tools: CHAT_TOOLS,
+      messages: msgs,
+    }),
+  });
+  if (!r.ok) { const t = await r.text(); throw new Error("anthropic " + r.status + ": " + t.slice(0, 300)); }
+  const data = await r.json();
+  const blocks = data.content || [];
+  const reply = blocks.filter((b) => b.type === "text" && b.text).map((b) => b.text).join("\n").trim();
+  const actions = blocks.filter((b) => b.type === "tool_use" && CLIENT_TOOLS[b.name]).map((b) => ({ tool: b.name, input: b.input }));
+  return { reply: reply || "…", actions };
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -114,6 +167,11 @@ export default {
         if (!text || !text.trim()) return json({ items: [] }, 200, env);
         const items = await parseFood(text.trim(), env);
         return json({ items }, 200, env);
+      }
+      if (url.pathname === "/ai/chat" && request.method === "POST") {
+        const body = await request.json();
+        const out = await chatCoach(body, env);
+        return json(out, 200, env);
       }
       if (url.pathname === "/health" && request.method === "GET") {
         // App reads Apple Health data (never writes it).

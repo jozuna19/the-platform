@@ -43,6 +43,8 @@ db.log=db.log||{}; db.weights=db.weights||[]; db.waist=db.waist||[]; db.lifts=db
 db.runs=db.runs||[]; db.food=db.food||{}; db.dtype=db.dtype||{}; db.meta=db.meta||{updated:0};
 db.settings=db.settings||{eatBack:false};
 db.meals=db.meals||[];
+db.chat=db.chat||[];    // AI coach conversation (synced)
+db.memory=db.memory||[]; // durable facts the coach remembers
 if(db.health){delete db.health;} // health now lives server-side in its own store
 var HEALTH={}; // Apple Health data, read-only from the backend (never synced up)
 try{ cfg=JSON.parse(localStorage.getItem(CFGKEY))||{}; }catch(e){ cfg={}; }
@@ -91,6 +93,7 @@ function pull(cb){
        db.log=db.log||{};db.weights=db.weights||[];db.waist=db.waist||[];db.lifts=db.lifts||[];
        db.runs=db.runs||[];db.food=db.food||{};db.dtype=db.dtype||{};db.meta=db.meta||{updated:0};
        db.settings=db.settings||{eatBack:false};db.meals=db.meals||[];
+       db.chat=db.chat||[];db.memory=db.memory||[];
        localSave();
      }
      setSync("ok"); if(cb)cb();
@@ -527,11 +530,84 @@ document.addEventListener("visibilitychange",function(){if(!document.hidden)pull
 var foodTab=document.querySelector('.tab[data-view="food"]'); if(foodTab)foodTab.addEventListener("click",pullHealth);
 setInterval(pullHealth,60000);
 
+/* ---------- AI Coach (available on every tab) ---------- */
+function coachContext(){
+  var k=iso(TODAY), tg=targets(k), tot=dayTotals(k);
+  var hd=HEALTH[k]||{}; var burned=Math.round(hd.kcalToday||0);
+  var eatBack=!!db.settings.eatBack, calTarget=tg.cal+(eatBack?burned:0);
+  var w=db.weights.slice().sort(function(a,b){return a.d<b.d?-1:1;});
+  return {
+    today:k, trainingDay:dtypeFor(k), goal:"247 -> 195 lb cut",
+    calories:{eaten:Math.round(tot.cal),target:calTarget,remaining:calTarget-Math.round(tot.cal)},
+    protein:{eaten:Math.round(tot.p),target:tg.p,remaining:tg.p-Math.round(tot.p)},
+    fiber:{eaten:Math.round(tot.fib),target:tg.fib},
+    exerciseBurnedToday:burned, eatBackOn:eatBack,
+    foodLoggedToday:foodFor(k).map(function(x){return x.name+(x.amt?(" "+x.amt):"")+" ("+Math.round(x.protein)+"p/"+Math.round(x.cal)+"kcal)";}),
+    recentWeights:w.slice(-5).map(function(x){return x.d+": "+x.v+"lb";}),
+    recentLifts:db.lifts.slice(-5).map(function(x){return x.lift+" "+x.wt+"x"+x.reps;}),
+    todayWorkouts:(hd.workouts||[]).map(function(x){return x.type+" "+x.kcal+"kcal";}),
+    loggingStreak:foodStreak()
+  };
+}
+function coachRender(){
+  var box=document.getElementById("coachMsgs");
+  if(!db.chat.length){ box.innerHTML='<div id="coachEmpty">👋 I\'m your coach. I can see your macros, weight, workouts and program — and I remember what you tell me.<br><br>Try: <i>"how much protein do I have left?"</i>, <i>"I ate a chick-fil-a sandwich"</i>, or <i>"remember my left knee hurts on heavy squats"</i>.</div>'; return; }
+  box.innerHTML=db.chat.map(function(m){
+    var cls=m.role==="user"?"user":(m.role==="act"?"act":"bot");
+    return '<div class="cmsg '+cls+'">'+esc(m.content)+'</div>';
+  }).join("");
+  box.scrollTop=box.scrollHeight;
+}
+function coachOpen(){ document.getElementById("coachPanel").classList.add("on"); document.getElementById("coachPanel").setAttribute("aria-hidden","false"); coachRender(); setTimeout(function(){document.getElementById("coachText").focus();},100); }
+function coachClose(){ document.getElementById("coachPanel").classList.remove("on"); document.getElementById("coachPanel").setAttribute("aria-hidden","true"); }
+function coachApply(a){
+  if(!a||!a.tool)return null;
+  var k=iso(TODAY);
+  if(a.tool==="log_food"){
+    var items=(a.input&&a.input.items)||[]; if(!items.length)return null;
+    items.forEach(function(x){ foodFor(k).push({name:x.name,amt:x.amt||"",cal:+x.cal||0,protein:+x.protein||0,carbs:+x.carbs||0,fat:+x.fat||0,fiber:+x.fiber||0,src:"coach",ts:Date.now()}); });
+    var p=items.reduce(function(s,x){return s+(+x.protein||0);},0), c=items.reduce(function(s,x){return s+(+x.cal||0);},0);
+    drawFood(); return "✓ Logged "+items.length+" item"+(items.length>1?"s":"")+" · "+Math.round(c)+" kcal / "+Math.round(p)+"g protein";
+  }
+  if(a.tool==="log_weight"){ var lb=+a.input.lb; if(!lb)return null; db.weights=db.weights.filter(function(x){return x.d!==k;}); db.weights.push({d:k,v:lb}); drawWeight(); return "✓ Logged weight "+lb+" lb"; }
+  if(a.tool==="log_lift"){ var i=a.input; if(!i.lift)return null; db.lifts.push({lift:i.lift,wt:+i.wt||0,reps:+i.reps||0,d:k}); drawLifts(); return "✓ Logged "+i.lift+" "+(+i.wt||0)+"×"+(+i.reps||0); }
+  if(a.tool==="remember"){ var n=(a.input.note||"").trim(); if(!n)return null; if(db.memory.indexOf(n)<0)db.memory.push(n); return "🧠 Saved to memory: "+n; }
+  return null;
+}
+var coachBusy=false;
+function coachSend(){
+  if(coachBusy)return;
+  var ta=document.getElementById("coachText"), text=ta.value.trim(); if(!text)return;
+  if(!cfg.url||!cfg.tok){ db.chat.push({role:"bot",content:"Connect cloud sync first (⤢ up top) — the coach runs through your synced backend."}); coachRender(); return; }
+  db.chat.push({role:"user",content:text}); ta.value=""; ta.style.height="auto";
+  coachBusy=true; coachRender();
+  var box=document.getElementById("coachMsgs");
+  var think=document.createElement("div"); think.className="cmsg think"; think.textContent="Coach is thinking…"; box.appendChild(think); box.scrollTop=box.scrollHeight;
+  var apiMsgs=db.chat.filter(function(m){return m.role==="user"||m.role==="assistant";}).map(function(m){return {role:m.role==="assistant"?"assistant":"user",content:m.content};});
+  fetch(cfg.url.replace(/\/$/,"")+"/ai/chat",{method:"POST",
+    headers:{"Authorization":"Bearer "+cfg.tok,"Content-Type":"application/json"},
+    body:JSON.stringify({messages:apiMsgs,context:coachContext(),memory:db.memory})})
+   .then(function(r){return r.ok?r.json():r.text().then(function(t){throw new Error(t);});})
+   .then(function(out){
+     if(out.reply) db.chat.push({role:"assistant",content:out.reply});
+     (out.actions||[]).forEach(function(a){ var note=coachApply(a); if(note) db.chat.push({role:"act",content:note}); });
+     save(); coachBusy=false; coachRender();
+   })
+   .catch(function(e){ coachBusy=false; db.chat.push({role:"bot",content:"Something went wrong reaching the coach. Try again."}); coachRender(); });
+}
+document.getElementById("coachFab").addEventListener("click",coachOpen);
+document.getElementById("coachClose").addEventListener("click",coachClose);
+document.getElementById("coachSend").addEventListener("click",coachSend);
+(function(){ var ta=document.getElementById("coachText");
+  ta.addEventListener("input",function(){ ta.style.height="auto"; ta.style.height=Math.min(120,ta.scrollHeight)+"px"; });
+  ta.addEventListener("keydown",function(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); coachSend(); } });
+})();
+
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=8").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=9").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=8; // bump this + version.json + ?v= on every release
+var APPVER=9; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
