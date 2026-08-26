@@ -49,7 +49,10 @@ Rules:
 - One entry per distinct food. Use the quantity the person states; if they say "a cup", "8 oz", "half of it", estimate grams sensibly and put the human-readable amount in "unit".
 - Meat weights are RAW unless they say cooked; rice/pasta are COOKED unless they say dry.
 - All macro numbers are for the stated quantity (not per 100g). Round cal to nearest 5, macros to nearest 1.
-- Use standard USDA-style values. If truly unsure, give your best estimate; never return null.
+- Use standard USDA-style values for generic whole foods (chicken, rice, egg) WITHOUT searching.
+- For SPECIFIC branded or restaurant items (e.g. "Chipotle chicken bowl", "Quest bar cookies & cream", "Chick-fil-A nuggets"), use web search to find the real published macros, then convert to the quantity eaten.
+- If truly unsure, give your best estimate; never return null.
+- After any searching, your FINAL message must be ONLY the JSON object, nothing else.
 - If the text names no food, return {"items":[]}.`;
 
 async function parseFood(text, env) {
@@ -62,8 +65,9 @@ async function parseFood(text, env) {
     },
     body: JSON.stringify({
       model: env.AI_MODEL || "claude-haiku-4-5-20251001",
-      max_tokens: 1024,
+      max_tokens: 1536,
       system: FOOD_SYSTEM,
+      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
       messages: [{ role: "user", content: text }],
     }),
   });
@@ -72,7 +76,9 @@ async function parseFood(text, env) {
     throw new Error("anthropic " + r.status + ": " + t.slice(0, 300));
   }
   const data = await r.json();
-  const raw = (data.content || []).map((b) => b.text || "").join("").trim();
+  // With web search there can be several text blocks; the JSON is in the LAST one.
+  const texts = (data.content || []).filter((b) => b.type === "text" && b.text).map((b) => b.text);
+  const raw = (texts.length ? texts[texts.length - 1] : "").trim();
   // pull the JSON object out even if the model wraps it
   const m = raw.match(/\{[\s\S]*\}/);
   let parsed;

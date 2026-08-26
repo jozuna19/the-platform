@@ -458,132 +458,6 @@ document.getElementById("talkBtn").addEventListener("click",function(){
   });
 });
 
-/* barcode scan */
-var zxReader=null, zxControls=null;
-function loadZX(cb){
-  if(window.ZXingBrowser){cb(true);return;}
-  var s=document.createElement("script");
-  s.src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.5/umd/zxing-browser.min.js";
-  s.onload=function(){cb(!!window.ZXingBrowser);}; s.onerror=function(){cb(false);};
-  document.head.appendChild(s);
-}
-function isStandalone(){
-  return (window.navigator.standalone===true) ||
-         (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
-}
-function scanSet(msg){var m=document.getElementById("scanMsg"); if(m)m.textContent=msg||"";}
-function stopLive(){ if(zxControls){try{zxControls.stop();}catch(x){}zxControls=null;} }
-
-document.getElementById("scanBtn").addEventListener("click",openScanScreen);
-document.getElementById("scanClose").addEventListener("click",closeScan);
-document.getElementById("scanAI").addEventListener("click",function(){ closeScan(); if(typeof openAI==="function")openAI(); else document.getElementById("talkBtn").click(); });
-document.getElementById("photoInput").addEventListener("change",handlePhoto);
-
-function openScanScreen(){
-  var s=document.getElementById("scanScreen");
-  document.getElementById("scanResult").innerHTML="";
-  document.getElementById("photoInput").value="";
-  s.classList.add("on"); s.setAttribute("aria-hidden","false");
-  // Live video only works outside iOS standalone. In a home-screen app, go straight to snap-a-photo.
-  if(isStandalone()){
-    document.getElementById("scanStage").style.display="none";
-    scanSet("Tap below to snap the barcode with your camera.");
-  }else{
-    document.getElementById("scanStage").style.display="";
-    startLiveScan();
-  }
-}
-function closeScan(){
-  stopLive();
-  var s=document.getElementById("scanScreen");
-  s.classList.remove("on"); s.setAttribute("aria-hidden","true");
-  document.getElementById("scanStage").style.display="";
-}
-function startLiveScan(){
-  scanSet("Starting camera…");
-  loadZX(function(ok){
-    if(!ok){ scanSet("Scanner needs a connection. Snap a photo instead."); return; }
-    try{
-      zxReader=new window.ZXingBrowser.BrowserMultiFormatReader();
-      scanSet("");
-      zxReader.decodeFromConstraints({video:{facingMode:{ideal:"environment"}}},"scanVideo",function(result,err,controls){
-        zxControls=controls;
-        if(result){ stopLive(); lookupCode(result.getText()); }
-      }).catch(function(){
-        // getUserMedia refused (common on iOS) — fall back to the photo path.
-        document.getElementById("scanStage").style.display="none";
-        scanSet("Live camera unavailable here. Snap a photo of the barcode instead.");
-      });
-    }catch(e){
-      document.getElementById("scanStage").style.display="none";
-      scanSet("Live camera unavailable here. Snap a photo of the barcode instead.");
-    }
-  });
-}
-function handlePhoto(ev){
-  var file=ev.target.files&&ev.target.files[0]; if(!file)return;
-  scanSet("Reading the barcode from your photo…");
-  loadZX(function(ok){
-    if(!ok){ scanSet("Couldn’t load the reader. Check your connection."); return; }
-    var url=URL.createObjectURL(file);
-    var reader=new window.ZXingBrowser.BrowserMultiFormatReader();
-    reader.decodeFromImageUrl(url).then(function(result){
-      URL.revokeObjectURL(url);
-      lookupCode(result.getText());
-    }).catch(function(){
-      URL.revokeObjectURL(url);
-      scanSet("No barcode found in that photo. Get closer, fill the box, hold steady, and try again.");
-    });
-  });
-}
-function gramsFromServing(serving){
-  if(!serving)return null; var m=String(serving).match(/([\d.]+)\s*g/i); return m?parseFloat(m[1]):null;
-}
-function lookupCode(code){
-  scanSet("Looking up "+code+"…");
-  fetch("https://world.openfoodfacts.org/api/v2/product/"+encodeURIComponent(code)+"?fields=product_name,brands,nutriments,serving_size")
-   .then(function(r){return r.json();})
-   .then(function(j){
-     if(!j||j.status!==1||!j.product){ notFound(code); return; }
-     var p=j.product,nu=p.nutriments||{};
-     var per={cal:nu["energy-kcal_100g"]||0,p:nu.proteins_100g||0,c:nu.carbohydrates_100g||0,f:nu.fat_100g||0,fib:nu.fiber_100g||0};
-     if(!per.cal&&!per.p){ notFound(code,p.product_name); return; }
-     var name=(p.product_name||"Product")+(p.brands?(" · "+p.brands.split(",")[0]):"");
-     showScanResult(name,per,gramsFromServing(p.serving_size),p.serving_size);
-   })
-   .catch(function(){ scanSet("Lookup failed — check your connection and try again."); });
-}
-function notFound(code,pname){
-  scanSet("");
-  document.getElementById("scanResult").innerHTML=
-    '<h4>Not in the database</h4>'+
-    '<div class="macln">'+(pname?esc(pname)+" — ":"")+'barcode '+esc(code)+' isn’t in Open Food Facts. Log it by talking to the AI instead.</div>'+
-    '<button class="btn full" id="sr2ai">Log with AI</button>';
-  document.getElementById("sr2ai").addEventListener("click",function(){ closeScan(); document.getElementById("talkBtn").click(); });
-}
-function showScanResult(name,per,servingG,servingLabel){
-  scanSet("");
-  var def=servingG||100;
-  document.getElementById("scanResult").innerHTML=
-    '<h4>'+esc(name)+'</h4>'+
-    '<div class="macln">Per 100g: '+Math.round(per.cal)+' kcal · '+Math.round(per.p)+'g protein'+(servingLabel?(" &middot; pack serving "+esc(servingLabel)):"")+'</div>'+
-    '<div class="amtrow"><input id="srAmt" type="number" step="5" min="0" value="'+def+'" style="flex:1"> <span style="align-self:center;color:var(--muted);font-size:13px">grams</span></div>'+
-    '<div class="prev" id="srPrev">—</div>'+
-    '<button class="btn full" id="srAdd">Add to log</button>'+
-    '<button class="btn ghost full" id="srAgain" style="margin-top:8px">Scan another</button>';
-  var amt=document.getElementById("srAmt"),prev=document.getElementById("srPrev");
-  function refresh(){var g=parseFloat(amt.value)||0,m=scaleMacros(per,g);prev.innerHTML=g?('<b>'+Math.round(m.cal)+'</b> kcal · <b>'+Math.round(m.protein)+'g</b> protein · '+Math.round(m.carbs)+'c · '+Math.round(m.fat)+'f · '+Math.round(m.fiber)+' fib'):"—";}
-  amt.addEventListener("input",refresh); refresh();
-  document.getElementById("srAdd").addEventListener("click",function(){
-    var g=parseFloat(amt.value)||0; if(!g)return; var m=scaleMacros(per,g);
-    m.name=name; m.amt=g+" g"; m.src="scan"; m.ts=Date.now(); addFood(m); closeScan();
-  });
-  document.getElementById("srAgain").addEventListener("click",function(){
-    document.getElementById("scanResult").innerHTML=""; document.getElementById("photoInput").value="";
-    if(!isStandalone()){document.getElementById("scanStage").style.display="";startLiveScan();}
-    else{scanSet("Tap below to snap the next barcode.");}
-  });
-}
 
 function toast(msg){var t=document.getElementById("toast");t.textContent=msg;t.classList.add("on");setTimeout(function(){t.classList.remove("on");},1600);}
 
@@ -654,10 +528,10 @@ var foodTab=document.querySelector('.tab[data-view="food"]'); if(foodTab)foodTab
 setInterval(pullHealth,60000);
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=7").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=8").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=7; // bump this + version.json + ?v= on every release
+var APPVER=8; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})

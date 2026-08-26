@@ -158,37 +158,6 @@
   .xdel{background:none;border:none;color:var(--muted);font-size:18px;line-height:1;padding:2px 6px;cursor:pointer;border-radius:6px}
   .xdel:hover,.xdel:active{color:#e5484d;background:rgba(229,72,77,.12)}
   .wtag{font-size:13px;opacity:.75}
-  /* ---- barcode scanner ---- */
-  .scanwrap{position:fixed;inset:0;z-index:200;background:#0B0B0C;display:none;flex-direction:column;
-    padding:calc(env(safe-area-inset-top) + 8px) 16px calc(env(safe-area-inset-bottom) + 16px)}
-  .scanwrap.on{display:flex}
-  .scanhead{display:flex;align-items:center;justify-content:space-between;color:#EDEAE6;
-    font-family:var(--display);font-weight:800;letter-spacing:.14em;text-transform:uppercase;font-size:14px;padding:6px 2px 12px}
-  .scanx{background:none;border:none;color:#EDEAE6;font-size:30px;line-height:1;cursor:pointer;padding:0 4px}
-  .scanstage{position:relative;flex:1;min-height:0;border-radius:16px;overflow:hidden;background:#000;
-    display:flex;align-items:center;justify-content:center}
-  #scanVideo{width:100%;height:100%;object-fit:cover;background:#000}
-  .reticle{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:78%;max-width:340px;aspect-ratio:1.9/1;
-    box-shadow:0 0 0 100vmax rgba(0,0,0,.5);border-radius:14px;pointer-events:none}
-  .reticle i{position:absolute;width:26px;height:26px;border:3px solid var(--gold)}
-  .reticle i:nth-child(1){top:-2px;left:-2px;border-right:0;border-bottom:0;border-radius:12px 0 0 0}
-  .reticle i:nth-child(2){top:-2px;right:-2px;border-left:0;border-bottom:0;border-radius:0 12px 0 0}
-  .reticle i:nth-child(3){bottom:-2px;left:-2px;border-right:0;border-top:0;border-radius:0 0 0 12px}
-  .reticle i:nth-child(4){bottom:-2px;right:-2px;border-left:0;border-top:0;border-radius:0 0 12px 0}
-  .scanline{position:absolute;left:6%;right:6%;top:8%;height:2px;background:var(--red);box-shadow:0 0 8px var(--red);
-    animation:scanmove 2s ease-in-out infinite}
-  @keyframes scanmove{0%{top:8%}50%{top:90%}100%{top:8%}}
-  @media (prefers-reduced-motion:reduce){.scanline{animation:none;top:50%}}
-  .scanhint{position:absolute;bottom:12px;left:0;right:0;text-align:center;color:#EDEAE6;font-size:12px;
-    text-shadow:0 1px 4px #000;pointer-events:none}
-  .scanmsg{color:var(--gold);font-size:13px;text-align:center;min-height:18px;padding:10px 4px 2px}
-  .scanactions{display:flex;flex-direction:column;gap:9px;padding-top:6px}
-  .btn.snap{background:var(--red);border-color:var(--red);color:#fff;font-size:15px;padding:15px}
-  .scanresult:empty{display:none}
-  .scanresult{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-top:12px}
-  .scanresult h4{margin:0 0 4px;font-size:16px;color:var(--text)}
-  .scanresult .macln{font-size:12px;color:var(--muted);margin-bottom:12px}
-  .scanresult .prev{margin:10px 0}
   .empty{color:var(--muted);font-size:12.5px;padding:10px 0}
 
   /* food dashboard */
@@ -337,8 +306,7 @@
   <section class="panel">
     <h3>Log Food</h3>
     <div class="logbtns">
-      <button class="btn gold" id="talkBtn">🎤 Talk / type it</button>
-      <button class="btn ghost" id="scanBtn">📷 Scan barcode</button>
+      <button class="btn gold full" id="talkBtn">🎤 Talk or type what you ate</button>
     </div>
     <div class="reuserow">
       <button class="btn ghost" id="copyYest">📋 Copy yesterday</button>
@@ -426,28 +394,9 @@
   </div>
 </div>
 
-<div class="scanwrap" id="scanScreen" aria-hidden="true">
-  <div class="scanhead">
-    <span>Scan a barcode</span>
-    <button class="scanx" id="scanClose" aria-label="Close scanner">×</button>
-  </div>
-  <div class="scanstage" id="scanStage">
-    <video id="scanVideo" playsinline autoplay muted></video>
-    <div class="reticle"><i></i><i></i><i></i><i></i><span class="scanline"></span></div>
-    <div class="scanhint" id="scanHint">Line the barcode up inside the box</div>
-  </div>
-  <div class="scanmsg" id="scanMsg"></div>
-  <div class="scanactions">
-    <label class="btn full snap" id="photoLabel">📷 Take a photo of the barcode
-      <input type="file" id="photoInput" accept="image/*" capture="environment" hidden>
-    </label>
-    <button class="btn ghost full" id="scanAI">Can’t scan it? Log with AI instead</button>
-  </div>
-  <div class="scanresult" id="scanResult"></div>
-</div>
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
