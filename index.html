@@ -263,6 +263,12 @@
     font-size:10.5px;padding:4px 4px;flex:none;max-width:82px}
   .reuserow{display:flex;gap:8px;margin:2px 0 12px}
   .reuserow{flex-wrap:wrap}
+  .swatch{display:flex;align-items:center;gap:9px;padding:10px;border-radius:10px;border:1px solid var(--border);
+    background:var(--surface-2);cursor:pointer;text-align:left}
+  .swatch.on{border-color:var(--gold);border-width:2px}
+  .swatch .dots{display:flex;gap:4px;flex:none}
+  .swatch .dots i{width:14px;height:14px;border-radius:50%;display:block;border:1px solid rgba(255,255,255,.15)}
+  .swatch .nm{font-family:var(--display);font-size:11px;font-weight:800;letter-spacing:.04em;color:var(--text)}
   .reuserow .btn{flex:1;font-size:11px;padding:10px 8px}
   .streak{margin-top:8px;font-size:12.5px;color:var(--gold);font-weight:700}
   .mealrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
@@ -479,6 +485,10 @@
     <input id="cfgTok" placeholder="paste APP_TOKEN" style="width:100%;margin:6px 0 12px" autocomplete="off">
     <button class="btn full" id="cfgSave">Connect &amp; sync</button>
     <p id="cfgStatus" style="font-size:12px;color:var(--muted);margin-top:10px"></p>
+    <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
+      <label class="eyebrow">Theme</label>
+      <div id="themeSwatches" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px"></div>
+    </div>
   </div>
 </div>
 
@@ -566,6 +576,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=17"></script>
+<script src="app.js?v=18"></script>
 </body>
 </html>

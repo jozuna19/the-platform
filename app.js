@@ -697,6 +697,37 @@ function streakText(){var n=0,d=new Date(TODAY);for(var i=0;i<400;i++){if(isDayD
   b.addEventListener("click",function(){var cur=r.getAttribute("data-theme");if(!cur)cur=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";var next=cur==="dark"?"light":"dark";r.setAttribute("data-theme",next);try{localStorage.setItem("platform.theme",next);}catch(e){}});
 })();
 
+/* ---------- color themes (palettes) ---------- */
+var THEMES=[
+  {id:"default",name:"Blood & Chalk",sw:["#C8102E","#D4A63C","#0B0B0C"]},
+  {id:"midnight",name:"Midnight",sw:["#4C7DF0","#E0A64B","#0A0E1A"],vars:{"--bg":"#0A0E1A","--surface":"#131A2E","--surface-2":"#1C2540","--text":"#E9EDF6","--muted":"#838EA8","--border":"#2A3350","--red":"#4C7DF0","--red-dim":"#3560C8","--gold":"#E0A64B","--green":"#46B98A"}},
+  {id:"forest",name:"Forest",sw:["#3FA96B","#D8B25A","#0B120E"],vars:{"--bg":"#0B120E","--surface":"#14201A","--surface-2":"#1C2C24","--text":"#E9F1EA","--muted":"#7E9686","--border":"#263A30","--red":"#3FA96B","--red-dim":"#2F8452","--gold":"#D8B25A","--green":"#3FA96B"}},
+  {id:"ember",name:"Ember",sw:["#E8642E","#E0A64B","#120B08"],vars:{"--bg":"#120B08","--surface":"#1F1611","--surface-2":"#2A1D15","--text":"#F3EAE2","--muted":"#A08B7C","--border":"#3A2A1E","--red":"#E8642E","--red-dim":"#C24E1E","--gold":"#E0A64B","--green":"#4E9F63"}},
+  {id:"grape",name:"Grape",sw:["#8B5CF6","#E0A64B","#0F0A16"],vars:{"--bg":"#0F0A16","--surface":"#191125","--surface-2":"#221733","--text":"#EEE8F5","--muted":"#8E82A3","--border":"#302447","--red":"#8B5CF6","--red-dim":"#6D3FD8","--gold":"#E0A64B","--green":"#4E9F63"}},
+  {id:"stealth",name:"Stealth",sw:["#7C8895","#B9C2CC","#0C0C0D"],vars:{"--bg":"#0C0C0D","--surface":"#161617","--surface-2":"#1E1E20","--text":"#ECECEC","--muted":"#8A8A8E","--border":"#2C2C2E","--red":"#7C8895","--red-dim":"#626D78","--gold":"#B9C2CC","--green":"#6E9E86"}}
+];
+var THEME_KEYS=["--bg","--surface","--surface-2","--text","--muted","--border","--red","--red-dim","--gold","--green"];
+function applyTheme(id){
+  var r=document.documentElement, t=THEMES.filter(function(x){return x.id===id;})[0]||THEMES[0];
+  THEME_KEYS.forEach(function(k){r.style.removeProperty(k);});
+  if(t.vars){ Object.keys(t.vars).forEach(function(k){r.style.setProperty(k,t.vars[k]);}); }
+  try{localStorage.setItem("platform.palette",id);}catch(e){}
+}
+(function(){var id="default";try{id=localStorage.getItem("platform.palette")||"default";}catch(e){}applyTheme(id);})();
+function drawThemeSwatches(){
+  var box=document.getElementById("themeSwatches"); if(!box) return;
+  var cur="default"; try{cur=localStorage.getItem("platform.palette")||"default";}catch(e){}
+  box.innerHTML=THEMES.map(function(t){
+    return '<button class="swatch'+(t.id===cur?" on":"")+'" data-theme-id="'+t.id+'">'+
+      '<span class="dots">'+t.sw.map(function(c){return '<i style="background:'+c+'"></i>';}).join("")+'</span>'+
+      '<span class="nm">'+t.name+'</span></button>';
+  }).join("");
+  Array.prototype.forEach.call(box.querySelectorAll(".swatch"),function(b){
+    b.addEventListener("click",function(){applyTheme(b.dataset.themeId);drawThemeSwatches();});
+  });
+}
+drawThemeSwatches();
+
 /* ---------- date navigation (calendar flow across all tabs) ---------- */
 function setViewing(d){ viewing=new Date(d); viewing.setHours(0,0,0,0); drawDateBar(); renderAll(); }
 function shiftDay(n){ var d=new Date(viewing); d.setDate(d.getDate()+n); setViewing(d); }
@@ -978,10 +1009,10 @@ document.getElementById("coachSend").addEventListener("click",coachSend);
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=17").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=18").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=17; // bump this + version.json + ?v= on every release
+var APPVER=18; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
