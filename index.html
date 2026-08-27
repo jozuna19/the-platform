@@ -41,7 +41,7 @@
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font-family:var(--body);
     line-height:1.5;-webkit-font-smoothing:antialiased;
-    padding:0 16px calc(80px + env(safe-area-inset-bottom));}
+    padding:0 16px calc(96px + env(safe-area-inset-bottom));}
   .wrap{max-width:var(--maxw);margin:0 auto}
   .eyebrow{font-family:var(--display);font-size:10.5px;font-weight:800;
     text-transform:uppercase;letter-spacing:.2em;color:var(--muted)}
@@ -64,15 +64,41 @@
   #syncDot[data-s="sync"]::after{background:var(--gold)}
   #syncDot[data-s="off"]::after{background:var(--red)}
 
-  /* tabs */
-  .tabs{display:flex;gap:6px;margin:16px 0 18px;position:sticky;top:0;z-index:20;
-    background:var(--bg);padding:8px 0}
-  .tab{flex:1;background:var(--surface);border:1px solid var(--border);color:var(--muted);
-    font-family:var(--display);font-size:11px;font-weight:800;letter-spacing:.08em;
-    text-transform:uppercase;padding:11px 4px;border-radius:var(--r);cursor:pointer}
-  .tab[aria-selected="true"]{border-color:var(--red);color:var(--text);background:var(--surface-2)}
+  /* bottom tab bar */
+  .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:100;display:flex;align-items:center;justify-content:space-around;
+    background:var(--surface);border-top:1px solid var(--border);
+    padding:6px 6px calc(6px + env(safe-area-inset-bottom));gap:2px}
+  .tabbar .tab{flex:1;background:none;border:none;color:var(--muted);cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;border-radius:10px;min-height:48px}
+  .tabbar .tab .ti{font-size:20px;line-height:1;filter:grayscale(1) opacity(.7)}
+  .tabbar .tab .tl{font-family:var(--display);font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+  .tabbar .tab[aria-selected="true"]{color:var(--red)}
+  .tabbar .tab[aria-selected="true"] .ti{filter:none}
+  .logfab{flex:none;width:54px;height:54px;margin-top:-22px;border-radius:50%;border:3px solid var(--bg);
+    background:var(--red);color:var(--accent-ink);font-size:30px;font-weight:300;line-height:1;cursor:pointer;
+    box-shadow:0 6px 18px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center}
+  .logfab:active{transform:scale(.94)}
   .view{display:none}
   .view.on{display:block}
+  /* home dashboard */
+  .hero-cal{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--red);border-radius:14px;
+    padding:22px 20px;text-align:center;margin-bottom:14px}
+  .hero-cal .big{font-family:var(--display);font-weight:800;font-size:clamp(52px,16vw,84px);line-height:.95;
+    letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .hero-cal .big.over{color:var(--red)}
+  .hero-cal .cap{font-family:var(--display);font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+  .hero-cal .sub{font-size:13px;color:var(--muted);margin-top:10px}
+  .hero-cal .sub b{color:var(--gold)}
+  .homecard{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:12px;
+    cursor:pointer;display:flex;align-items:center;gap:14px;text-align:left;width:100%}
+  .homecard:hover{border-color:var(--gold)}
+  .homecard .hc-ic{font-size:22px;flex:none}
+  .homecard .hc-main{flex:1;min-width:0}
+  .homecard .hc-t{font-family:var(--display);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .homecard .hc-v{font-size:16px;margin-top:2px}
+  .homecard .hc-arrow{color:var(--muted);font-size:18px;flex:none}
+  .homerow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:400px){.homerow{grid-template-columns:1fr}}
 
   .rail{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin:0 0 18px}
   .day{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
@@ -208,10 +234,7 @@
   .excustom{display:flex;gap:8px;align-items:center}
   .excustom input{background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px;font:inherit;font-size:13px;min-width:0}
   /* ---- AI coach ---- */
-  #coachFab{position:fixed;right:16px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:190;
-    width:56px;height:56px;border-radius:50%;border:none;background:var(--red);color:var(--accent-ink);font-size:24px;
-    box-shadow:0 6px 20px rgba(0,0,0,.4);cursor:pointer;display:flex;align-items:center;justify-content:center}
-  #coachFab:active{transform:scale(.94)}
+  /* coach button now lives in the header as a normal .icref */
   #coachPanel{position:fixed;inset:0;z-index:240;background:var(--bg);display:none;flex-direction:column;
     max-width:var(--maxw);margin:0 auto}
   #coachPanel.on{display:flex}
@@ -271,7 +294,7 @@
   .swatch .dots i{width:14px;height:14px;border-radius:50%;display:block;border:1px solid rgba(255,255,255,.15)}
   .swatch .nm{font-family:var(--display);font-size:11px;font-weight:800;letter-spacing:.04em;color:var(--text)}
   /* rest timer */
-  #restTimer{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom));
+  #restTimer{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));
     z-index:195;display:none;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--red);
     border-radius:99px;padding:7px 8px 7px 14px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
   #restTimer.on{display:flex}
@@ -358,16 +381,19 @@
     <p id="tagline">247 to 195 &middot; the cut</p>
   </div>
   <div class="hbtns">
+    <button class="icref" id="coachFab" title="AI coach" aria-label="Open AI coach">💬</button>
     <button class="icref" id="syncDot" title="Sync / settings" aria-label="Sync and settings">⤢</button>
     <button class="icref" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">◐</button>
   </div>
 </header>
 
-<div class="tabs" role="tablist">
-  <button class="tab" role="tab" data-view="train" aria-selected="true">Train</button>
-  <button class="tab" role="tab" data-view="food" aria-selected="false">Food</button>
-  <button class="tab" role="tab" data-view="body" aria-selected="false">Body</button>
-</div>
+<nav class="tabbar" role="tablist">
+  <button class="tab" role="tab" data-view="home" aria-selected="true"><span class="ti">🏠</span><span class="tl">Home</span></button>
+  <button class="tab" role="tab" data-view="food" aria-selected="false"><span class="ti">🍽️</span><span class="tl">Food</span></button>
+  <button class="logfab" id="logFab" aria-label="Quick log">+</button>
+  <button class="tab" role="tab" data-view="train" aria-selected="false"><span class="ti">🏋️</span><span class="tl">Train</span></button>
+  <button class="tab" role="tab" data-view="body" aria-selected="false"><span class="ti">📊</span><span class="tl">Body</span></button>
+</nav>
 
 <div class="datebar" id="dateBar">
   <button class="dnav" id="datePrev" aria-label="Previous day">‹</button>
@@ -376,8 +402,13 @@
   <button class="dtoday" id="dateToday">Today</button>
 </div>
 
+<!-- HOME -->
+<div class="view on" id="v-home">
+  <div id="homeBody"></div>
+</div>
+
 <!-- TRAIN -->
-<div class="view on" id="v-train">
+<div class="view" id="v-train">
   <nav class="rail" id="rail" aria-label="Week"></nav>
   <article class="card" id="trainCard"></article>
   <section class="panel">
@@ -587,7 +618,6 @@
   <button class="rtadj" id="rtPlus" aria-label="Plus 15 seconds">+15</button>
   <button class="rtskip" id="rtSkip" aria-label="Skip rest">✕</button>
 </div>
-<button id="coachFab" aria-label="Open AI coach">💬</button>
 <div id="coachPanel" aria-hidden="true">
   <div class="coachhead">
     <div><b>Coach</b><small>knows your data · remembers you</small></div>
@@ -602,6 +632,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=20"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>

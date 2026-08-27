@@ -114,10 +114,28 @@ Array.prototype.forEach.call(document.querySelectorAll(".tab"),function(t){
     Array.prototype.forEach.call(document.querySelectorAll(".tab"),function(x){x.setAttribute("aria-selected","false");});
     Array.prototype.forEach.call(document.querySelectorAll(".view"),function(v){v.classList.remove("on");});
     t.setAttribute("aria-selected","true");
-    document.getElementById("v-"+t.dataset.view).classList.add("on");
+    var v=t.dataset.view;
+    document.getElementById("v-"+v).classList.add("on");
+    var db2=document.getElementById("dateBar"); if(db2) db2.style.display=(v==="home")?"none":"";
+    if(v==="home") drawHome();
+    if(v==="food") pullHealth();
     window.scrollTo(0,0);
   });
 });
+/* center + FAB — quick log from any tab */
+(function(){var f=document.getElementById("logFab"); if(!f)return;
+  f.addEventListener("click",function(){
+    document.getElementById("fmTitle").textContent="Quick log";
+    document.getElementById("fmBody").innerHTML=
+      '<button class="btn gold full" id="qlTalk" style="margin-bottom:10px">🎤 Talk or type what you ate</button>'+
+      '<button class="btn full" id="qlQuick">➕ Quick add (calories/macros)</button>';
+    openModal("foodModal");
+    document.getElementById("qlTalk").addEventListener("click",function(){closeModal("foodModal");document.getElementById("talkBtn").click();});
+    document.getElementById("qlQuick").addEventListener("click",function(){closeModal("foodModal");openQuickAdd();});
+  });
+})();
+// hide the date bar on the default Home view at load
+(function(){var d=document.getElementById("dateBar"); if(d) d.style.display="none";})();
 
 /* ---------- TRAIN: rail + card ---------- */
 function schemeTarget(scheme){var n=parseInt(scheme,10);return isNaN(n)?1:n;}
@@ -965,7 +983,47 @@ document.getElementById("digestBtn").addEventListener("click",function(){
    .catch(function(){body.textContent="Couldn't reach the coach. Try again.";});
 });
 
-function renderAll(){drawRail();drawTrainCard();drawLifts();drawRuns();drawWeight();drawFood();drawHealthStats();drawTargets();drawRecipes();updateFoot();}
+/* ---------- HOME dashboard ---------- */
+function drawHome(){
+  var box=document.getElementById("homeBody"); if(!box) return;
+  var k=iso(TODAY), tg=targets(k), tot=dayTotals(k);
+  var hd=HEALTH[k]||{}, burned=Math.round(hd.kcalToday||0), m=hd.metrics||{};
+  var eatBack=!!db.settings.eatBack, calTarget=tg.cal+(eatBack?burned:0);
+  var remain=calTarget-Math.round(tot.cal), pRemain=tg.p-Math.round(tot.p);
+  var over=remain<0;
+  // today's workout
+  var dow=TODAY.getDay(), p=PROGRAM[dow], woV;
+  if(p.rest){ woV="Rest day"; }
+  else if(p.cardio){ var e=db.log[k]; woV=p.name+(e&&e.done?" · done ✓":" · not logged"); }
+  else { var s=session(k,dow), dn=s.exercises.reduce(function(a,x){return a+Math.min(x.done||0,x.target||0);},0),
+        tt=s.exercises.reduce(function(a,x){return a+(x.target||0);},0);
+        woV=p.name+" · "+dn+"/"+tt+" sets"+(isDayDone(k,dow)?" ✓":""); }
+  // weight
+  var w=db.weights.slice().sort(function(a,b){return a.d<b.d?-1:1;}), cur=w.length?w[w.length-1].v:null;
+  var wV=cur!==null?(cur.toFixed(1)+" lb · goal 195"):"No weigh-in yet";
+  var streak=foodStreak();
+  var hStats=[];
+  if(m.steps!=null)hStats.push(Math.round(m.steps).toLocaleString()+" steps");
+  if(m.move!=null)hStats.push(Math.round(m.move)+" move");
+  if(burned)hStats.push(burned+" workout cal");
+  var greeting=(TODAY.getHours()<12?"Good morning":TODAY.getHours()<18?"Good afternoon":"Good evening");
+  function card(view,ic,t,v){return '<button class="homecard" data-go="'+view+'"><span class="hc-ic">'+ic+'</span><span class="hc-main"><span class="hc-t">'+t+'</span><span class="hc-v">'+esc(v)+'</span></span><span class="hc-arrow">›</span></button>';}
+  box.innerHTML=
+    '<div style="margin:6px 0 12px;color:var(--muted);font-size:13px">'+greeting+', John.'+(streak>=2?' <b style="color:var(--gold)">🔥 '+streak+"-day streak</b>":"")+'</div>'+
+    '<button class="hero-cal" data-go="food" style="display:block;width:100%;border-width:1px 1px 1px 3px;cursor:pointer">'+
+      '<div class="big'+(over?" over":"")+'">'+(over?"+"+Math.abs(remain):remain)+'</div>'+
+      '<div class="cap">'+(over?"calories over":"calories left")+'</div>'+
+      '<div class="sub"><b>'+Math.round(tot.cal)+'</b> / '+calTarget+' kcal &nbsp;·&nbsp; protein <b>'+Math.round(tot.p)+'</b>/'+tg.p+'g'+(pRemain>0?" ("+pRemain+" to go)":" ✓")+'</div>'+
+    '</button>'+
+    card("train","🏋️","Today's workout",woV)+
+    card("body","📊","Bodyweight",wV)+
+    card("food","🍽️","Eaten today",Math.round(tot.cal)+" kcal · "+Math.round(tot.p)+"g P · "+foodFor(k).length+" items")+
+    (hStats.length?card("body","⌚","Apple Health",hStats.join(" · ")):"");
+  Array.prototype.forEach.call(box.querySelectorAll(".homecard,.hero-cal"),function(b){
+    b.addEventListener("click",function(){var v=b.dataset.go;var t=document.querySelector('.tab[data-view="'+v+'"]');if(t)t.click();});
+  });
+}
+function renderAll(){drawHome();drawRail();drawTrainCard();drawLifts();drawRuns();drawWeight();drawFood();drawHealthStats();drawTargets();drawRecipes();updateFoot();}
 drawDateBar();
 renderAll();
 setSync(cfg.url&&cfg.tok?"ok":"");
@@ -1074,10 +1132,10 @@ document.getElementById("coachSend").addEventListener("click",coachSend);
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=20").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=21").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=20; // bump this + version.json + ?v= on every release
+var APPVER=21; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
