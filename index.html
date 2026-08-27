@@ -441,13 +441,19 @@
     </form>
   </div>
   <div class="panel">
-    <h3>The Cut &middot; targets</h3>
-    <div class="macros" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center">
-      <div class="ring"><div class="rv num">1,900</div><div class="rk">kcal train</div></div>
-      <div class="ring"><div class="rv num">185</div><div class="rk">g protein</div></div>
-      <div class="ring"><div class="rv num">30</div><div class="rk">g fiber</div></div>
-    </div>
-    <p style="font-size:12px;color:var(--muted);margin-top:12px">Rest days ~1,825. Recalibrate at week 3: losing &gt;3 lb/wk add 200; &lt;1 lb/wk cut 200. Protein is non-negotiable.</p>
+    <div class="head" style="border:none;padding:0"><h3>Targets</h3><button class="lk" id="editTgt" style="text-decoration:underline">Edit</button></div>
+    <div id="tgtPanel"></div>
+    <p style="font-size:12px;color:var(--muted);margin-top:12px">Recalibrate at week 3: losing &gt;3 lb/wk add 200 kcal; &lt;1 lb/wk cut 200. Protein is non-negotiable.</p>
+  </div>
+  <div class="panel">
+    <div class="head" style="border:none;padding:0"><h3>Recipes</h3><button class="lk" id="newRecipe" style="text-decoration:underline">+ New</button></div>
+    <div id="recipeList"></div>
+    <div class="empty" id="recipeEmpty">No recipes yet. Build one (e.g. your Chipotle Beef Bowls) and log it in one tap.</div>
+  </div>
+  <div class="panel">
+    <h3>Weekly Digest</h3>
+    <p style="font-size:12.5px;color:var(--muted);margin:6px 0 12px">Your last 7 days: macros, weight trend, workouts, and what to fix.</p>
+    <button class="btn full gold" id="digestBtn">📊 Generate weekly digest</button>
   </div>
 </div>
 
@@ -499,6 +505,37 @@
   </div>
 </div>
 
+<div class="modal" id="tgtModal">
+  <div class="sheet">
+    <button class="close" data-close>×</button>
+    <h3>Edit targets</h3>
+    <div id="tgtForm"></div>
+    <button class="btn full" id="tgtSave" style="margin-top:12px">Save targets</button>
+    <button class="lk" id="tgtReset" style="display:block;margin:10px auto 0;text-decoration:underline">Reset to defaults</button>
+  </div>
+</div>
+
+<div class="modal" id="recipeModal">
+  <div class="sheet">
+    <button class="close" data-close>×</button>
+    <h3>New recipe</h3>
+    <input id="rcName" placeholder="Recipe name (e.g. Chipotle Beef Bowls)" style="width:100%;margin:8px 0">
+    <input id="rcServ" type="number" min="1" value="1" placeholder="servings" style="width:100%;margin-bottom:8px">
+    <textarea id="rcText" rows="4" placeholder="List the ingredients (e.g. 1 lb 93/7 beef, 2 lb potatoes, 100g light mayo…). The AI totals it, then divides by servings." style="width:100%"></textarea>
+    <div class="prev" id="rcPrev" style="margin-top:10px">—</div>
+    <button class="btn full" id="rcCalc">Calculate macros</button>
+    <button class="btn full gold" id="rcSave" style="margin-top:8px;display:none">Save recipe</button>
+  </div>
+</div>
+
+<div class="modal" id="digestModal">
+  <div class="sheet">
+    <button class="close" data-close>×</button>
+    <h3>Weekly Digest</h3>
+    <div id="digestBody" style="font-size:13.5px;line-height:1.5;margin-top:10px">—</div>
+  </div>
+</div>
+
 <div class="modal" id="calModal">
   <div class="sheet">
     <button class="close" data-close>×</button>
@@ -529,6 +566,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=15"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>

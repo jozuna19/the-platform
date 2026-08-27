@@ -51,6 +51,7 @@ db.settings=db.settings||{eatBack:false};
 db.meals=db.meals||[];
 db.chat=db.chat||[];    // AI coach conversation (synced)
 db.memory=db.memory||[]; // durable facts the coach remembers
+db.recipes=db.recipes||[]; // saved recipes (per-serving macros)
 if(db.health){delete db.health;} // health now lives server-side in its own store
 var HEALTH={}; // Apple Health data, read-only from the backend (never synced up)
 try{ cfg=JSON.parse(localStorage.getItem(CFGKEY))||{}; }catch(e){ cfg={}; }
@@ -99,7 +100,7 @@ function pull(cb){
        db.log=db.log||{};db.weights=db.weights||[];db.waist=db.waist||[];db.lifts=db.lifts||[];
        db.runs=db.runs||[];db.food=db.food||{};db.dtype=db.dtype||{};db.meta=db.meta||{updated:0};
        db.settings=db.settings||{eatBack:false};db.meals=db.meals||[];
-       db.chat=db.chat||[];db.memory=db.memory||[];
+       db.chat=db.chat||[];db.memory=db.memory||[];db.recipes=db.recipes||[];
        localSave();
      }
      setSync("ok"); if(cb)cb();
@@ -377,7 +378,8 @@ function drawHealthStats(){
 
 /* ---------- FOOD ---------- */
 function dtypeFor(k){ if(db.dtype[k]) return db.dtype[k]; return LIFT_DAYS[new Date(k+"T12:00:00").getDay()]?"train":"rest"; }
-function targets(k){ var t=dtypeFor(k); return t==="train"?{cal:1900,p:186,c:165,f:55,fib:30}:{cal:1825,p:185,c:150,f:55,fib:30}; }
+var DEFAULT_TARGETS={train:{cal:1900,p:186,c:165,f:55,fib:30},rest:{cal:1825,p:185,c:150,f:55,fib:30}};
+function targets(k){ var t=dtypeFor(k); var ct=db.settings.targets; return (ct&&ct[t])?ct[t]:DEFAULT_TARGETS[t]; }
 function foodFor(k){ return db.food[k]||(db.food[k]=[]); }
 function dayTotals(k){ return foodFor(k).reduce(function(a,x){a.cal+=x.cal||0;a.p+=x.protein||0;a.c+=x.carbs||0;a.f+=x.fat||0;a.fib+=x.fiber||0;return a;},{cal:0,p:0,c:0,f:0,fib:0}); }
 
@@ -742,7 +744,132 @@ Array.prototype.forEach.call(document.querySelectorAll("#calModal [data-close]")
 document.getElementById("calModal").addEventListener("click",function(e){if(e.target===this)closeModal("calModal");});
 
 /* ---------- render ---------- */
-function renderAll(){drawRail();drawTrainCard();drawLifts();drawRuns();drawWeight();drawFood();drawHealthStats();updateFoot();}
+/* ---------- editable targets ---------- */
+function drawTargets(){
+  var el=document.getElementById("tgtPanel"); if(!el) return;
+  var tr=targets("2026-01-06"); // a Tuesday = training day
+  var rt=DEFAULT_TARGETS.rest; var ct=db.settings.targets; var rest=(ct&&ct.rest)?ct.rest:rt;
+  function block(title,t){
+    return '<div style="margin-bottom:6px"><div class="eyebrow" style="margin-bottom:6px">'+title+'</div>'+
+      '<div class="macros" style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;text-align:center">'+
+      '<div class="ring"><div class="rv num">'+t.cal+'</div><div class="rk">kcal</div></div>'+
+      '<div class="ring"><div class="rv num">'+t.p+'</div><div class="rk">protein</div></div>'+
+      '<div class="ring"><div class="rv num">'+t.c+'</div><div class="rk">carbs</div></div>'+
+      '<div class="ring"><div class="rv num">'+t.f+'</div><div class="rk">fat</div></div>'+
+      '<div class="ring"><div class="rv num">'+t.fib+'</div><div class="rk">fiber</div></div>'+
+      '</div></div>';
+  }
+  el.innerHTML=block("Training day",tr)+block("Rest day",rest);
+}
+function openTargets(){
+  var ct=db.settings.targets||DEFAULT_TARGETS;
+  var tr=ct.train||DEFAULT_TARGETS.train, rt=ct.rest||DEFAULT_TARGETS.rest;
+  function row(day,t){
+    return '<div class="eyebrow" style="margin:8px 0 6px">'+day+'</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px">'+
+      ['cal','p','c','f','fib'].map(function(kk){return '<input type="number" data-d="'+day.toLowerCase().slice(0,4)+'" data-k="'+kk+'" value="'+t[kk]+'" aria-label="'+day+' '+kk+'">';}).join("")+'</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;text-align:center;margin-top:3px"><span>kcal</span><span>protein</span><span>carbs</span><span>fat</span><span>fiber</span></div>';
+  }
+  document.getElementById("tgtForm").innerHTML=row("Train",tr)+row("Rest",rt);
+  openModal("tgtModal");
+}
+document.getElementById("editTgt").addEventListener("click",openTargets);
+document.getElementById("tgtSave").addEventListener("click",function(){
+  var t={train:{},rest:{}};
+  Array.prototype.forEach.call(document.querySelectorAll("#tgtForm input"),function(inp){
+    var d=inp.dataset.d==="trai"?"train":"rest"; t[d][inp.dataset.k]=parseFloat(inp.value)||0;
+  });
+  db.settings.targets=t; save(); drawTargets(); drawFood(); closeModal("tgtModal"); toast("Targets saved");
+});
+document.getElementById("tgtReset").addEventListener("click",function(){
+  delete db.settings.targets; save(); drawTargets(); drawFood(); closeModal("tgtModal"); toast("Reset to defaults");
+});
+
+/* ---------- recipe box ---------- */
+function drawRecipes(){
+  var box=document.getElementById("recipeList"),empty=document.getElementById("recipeEmpty");
+  if(!box)return;
+  empty.style.display=db.recipes.length?"none":"block";
+  box.innerHTML=db.recipes.map(function(r,i){
+    var p=r.per||{};
+    return '<div class="mealrow"><div class="mn">'+esc(r.name)+'<small>per serving · '+Math.round(p.cal||0)+' kcal · '+Math.round(p.protein||0)+'g P · '+Math.round(p.carbs||0)+'C '+Math.round(p.fat||0)+'F</small></div>'+
+      '<button class="logmeal" data-lr="'+i+'">Log</button><button class="delmeal" data-dr="'+i+'" aria-label="Delete recipe">×</button></div>';
+  }).join("");
+  Array.prototype.forEach.call(box.querySelectorAll(".logmeal"),function(b){b.addEventListener("click",function(){logRecipe(+b.dataset.lr);});});
+  Array.prototype.forEach.call(box.querySelectorAll(".delmeal"),function(b){b.addEventListener("click",function(){db.recipes.splice(+b.dataset.dr,1);save();drawRecipes();toast("Recipe deleted");});});
+}
+function logRecipe(i){
+  var r=db.recipes[i]; if(!r)return; var p=r.per||{};
+  addFood({name:r.name+" (1 serving)",amt:"",cal:p.cal||0,protein:p.protein||0,carbs:p.carbs||0,fat:p.fat||0,fiber:p.fiber||0,src:"recipe",ts:Date.now()});
+}
+var rcCalcResult=null;
+function openNewRecipe(){
+  document.getElementById("rcName").value="";document.getElementById("rcServ").value="1";
+  document.getElementById("rcText").value="";document.getElementById("rcPrev").textContent="—";
+  document.getElementById("rcSave").style.display="none"; rcCalcResult=null;
+  openModal("recipeModal");
+}
+document.getElementById("newRecipe").addEventListener("click",openNewRecipe);
+document.getElementById("rcCalc").addEventListener("click",function(){
+  var text=document.getElementById("rcText").value.trim(); var prev=document.getElementById("rcPrev");
+  if(!text){prev.textContent="Add some ingredients first.";return;}
+  if(!cfg.url||!cfg.tok){prev.textContent="Connect cloud sync first (⤢).";return;}
+  prev.textContent="Calculating…";
+  fetch(cfg.url.replace(/\/$/,"")+"/ai/parse",{method:"POST",headers:{"Authorization":"Bearer "+cfg.tok,"Content-Type":"application/json"},body:JSON.stringify({text:text})})
+   .then(function(r){return r.ok?r.json():null;})
+   .then(function(j){
+     var items=(j&&j.items)||[]; if(!items.length){prev.textContent="Couldn't read the ingredients. Try rephrasing.";return;}
+     var tot=items.reduce(function(a,x){a.cal+=+x.cal||0;a.p+=+x.protein||0;a.c+=+x.carbs||0;a.f+=+x.fat||0;a.fib+=+x.fiber||0;return a;},{cal:0,p:0,c:0,f:0,fib:0});
+     var serv=Math.max(1,parseInt(document.getElementById("rcServ").value,10)||1);
+     var per={cal:tot.cal/serv,protein:tot.p/serv,carbs:tot.c/serv,fat:tot.f/serv,fiber:tot.fib/serv};
+     rcCalcResult=per;
+     prev.innerHTML='<b>Per serving ('+serv+'):</b> '+Math.round(per.cal)+' kcal · '+Math.round(per.protein)+'g protein · '+Math.round(per.carbs)+'C · '+Math.round(per.fat)+'F · '+Math.round(per.fiber)+' fib';
+     document.getElementById("rcSave").style.display="block";
+   })
+   .catch(function(){prev.textContent="Lookup failed. Try again.";});
+});
+document.getElementById("rcSave").addEventListener("click",function(){
+  var name=document.getElementById("rcName").value.trim(); if(!name){toast("Name the recipe");return;}
+  if(!rcCalcResult){toast("Calculate macros first");return;}
+  db.recipes.push({name:name.slice(0,50),per:rcCalcResult}); save(); drawRecipes(); closeModal("recipeModal"); toast("Recipe saved");
+});
+
+/* ---------- weekly digest ---------- */
+function weekStats(){
+  var days=[]; for(var i=0;i<7;i++){var d=new Date(TODAY);d.setDate(d.getDate()-i);days.push(iso(d));}
+  var logged=0,cal=0,p=0,c=0,f=0,fib=0,workouts=0;
+  days.forEach(function(k){
+    var arr=db.food[k]||[];
+    if(arr.length){logged++; arr.forEach(function(x){cal+=x.cal||0;p+=x.protein||0;c+=x.carbs||0;f+=x.fat||0;fib+=x.fiber||0;});}
+    var dow=new Date(k+"T12:00:00").getDay(); if(isDayDone(k,dow))workouts++;
+  });
+  var w=db.weights.slice().sort(function(a,b){return a.d<b.d?-1:1;});
+  var wk=w.filter(function(x){return days.indexOf(x.d)>=0;});
+  var wChange=wk.length>=2?(wk[wk.length-1].v-wk[0].v):null;
+  var n=logged||1;
+  return {daysLogged:logged, avgCal:Math.round(cal/n), avgProtein:Math.round(p/n), avgCarbs:Math.round(c/n), avgFat:Math.round(f/n), avgFiber:Math.round(fib/n),
+    workoutsDone:workouts, weightChangeLb:wChange!=null?Math.round(wChange*10)/10:null, latestWeight:w.length?w[w.length-1].v:null, goal:"247 -> 195 cut"};
+}
+document.getElementById("digestBtn").addEventListener("click",function(){
+  var body=document.getElementById("digestBody"); openModal("digestModal");
+  if(!cfg.url||!cfg.tok){body.textContent="Connect cloud sync first (⤢) to generate the digest.";return;}
+  var s=weekStats();
+  body.innerHTML='<div style="color:var(--muted)">Crunching your week…</div>';
+  fetch(cfg.url.replace(/\/$/,"")+"/ai/digest",{method:"POST",headers:{"Authorization":"Bearer "+cfg.tok,"Content-Type":"application/json"},body:JSON.stringify(s)})
+   .then(function(r){return r.ok?r.json():null;})
+   .then(function(j){
+     var stat='<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px">'+
+       '<div class="ring"><div class="rv num">'+s.avgCal+'</div><div class="rk">avg kcal</div></div>'+
+       '<div class="ring"><div class="rv num">'+s.avgProtein+'</div><div class="rk">avg protein</div></div>'+
+       '<div class="ring"><div class="rv num">'+s.daysLogged+'/7</div><div class="rk">days logged</div></div>'+
+       '<div class="ring"><div class="rv num">'+(s.weightChangeLb!=null?(s.weightChangeLb>0?"+":"")+s.weightChangeLb:"—")+'</div><div class="rk">lb change</div></div>'+
+       '</div>';
+     body.innerHTML=stat+'<div style="white-space:pre-wrap">'+esc((j&&j.text)||"Couldn't generate a recap.")+'</div>';
+   })
+   .catch(function(){body.textContent="Couldn't reach the coach. Try again.";});
+});
+
+function renderAll(){drawRail();drawTrainCard();drawLifts();drawRuns();drawWeight();drawFood();drawHealthStats();drawTargets();drawRecipes();updateFoot();}
 drawDateBar();
 renderAll();
 setSync(cfg.url&&cfg.tok?"ok":"");
@@ -851,10 +978,10 @@ document.getElementById("coachSend").addEventListener("click",coachSend);
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=15").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=16").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=15; // bump this + version.json + ?v= on every release
+var APPVER=16; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})

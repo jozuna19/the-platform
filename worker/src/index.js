@@ -188,6 +188,15 @@ export default {
         const out = await chatCoach(body, env);
         return json(out, 200, env);
       }
+      if (url.pathname === "/ai/digest" && request.method === "POST") {
+        const s = await request.json();
+        const sys = `You are John's fitness coach. He's on a CUT (247 -> ~195 lb, high protein, ~1900 kcal/186g protein training days).
+Here are his last-7-days stats: ${JSON.stringify(s)}.
+Write a SHORT weekly recap (plain text, no markdown, no dashes): 1) one line on how the week went, 2) 2-3 specific things that went well or need fixing (protein consistency, logging adherence, weight trend vs a healthy cut of ~1-2 lb/wk, workouts), 3) one clear focus for next week. Direct, encouraging, no fluff. Under 120 words.`;
+        const data = await anthropic(sys, [], [{ role: "user", content: "Write the recap." }], env);
+        const texts = (data.content || []).filter((x) => x.type === "text" && x.text).map((x) => x.text);
+        return json({ text: (texts.join("\n") || "").trim() || "No recap available." }, 200, env);
+      }
       if (url.pathname === "/ai/suggest" && request.method === "POST") {
         const b = await request.json();
         const sys = `You are a strength coach. The athlete is on a CUT (247->195 lb, high protein), lifting with a squat/bench/deadlift focus.
