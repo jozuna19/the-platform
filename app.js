@@ -195,7 +195,9 @@ function drawTrainCard(){
   var cb=document.getElementById("cardioBtn");
   if(cb)cb.addEventListener("click",function(){var e=dayEntry(k);e.done=!e.done;save();drawRail();drawTrainCard();});
   Array.prototype.forEach.call(document.querySelectorAll("#trainCard .set"),function(b){
-    b.addEventListener("click",function(){var s=session(k,dow),i=+b.dataset.ex,v=+b.dataset.s;var x=s.exercises[i];x.done=(x.done===v)?v-1:v;save();drawRail();drawTrainCard();});
+    b.addEventListener("click",function(){var s=session(k,dow),i=+b.dataset.ex,v=+b.dataset.s;var x=s.exercises[i];var was=x.done;x.done=(x.done===v)?v-1:v;
+      if(x.done>was && iso(viewing)===iso(TODAY)) rtStart((db.settings&&db.settings.restSec)||90); // completing a set starts rest
+      save();drawRail();drawTrainCard();});
   });
   Array.prototype.forEach.call(document.querySelectorAll("#trainCard .exdel"),function(b){
     b.addEventListener("click",function(){var s=session(k,dow);s.exercises.splice(+b.dataset.exdel,1);save();drawRail();drawTrainCard();});
@@ -357,6 +359,33 @@ function drawWeight(){
   document.getElementById("wAvg").textContent=avg!==null?("7-day avg "+avg.toFixed(1)+" lb"+(w.length>=7?"":" ("+w.length+"/7 logged)")):"Log daily — the trend is the only number that matters.";
   var ref=avg!==null?avg:cur;
   document.getElementById("ladder").innerHTML=RUNGS.map(function(r){return '<div class="rung"'+(ref!==null&&ref<=r?' data-hit="1"':'')+'><div class="t"></div><span class="n">'+r+'</span></div>';}).join("");
+  drawWeightChart(w);
+}
+// MacroFactor-style trend line: faint daily dots + a smoothed moving-average line
+function drawWeightChart(w){
+  var wrap=document.getElementById("wChartWrap"), svg=document.getElementById("wChart"); if(!svg) return;
+  var pts=w.slice(-30);
+  if(pts.length<2){ wrap.style.display="none"; return; }
+  wrap.style.display="";
+  var W=320,H=96,padX=6,padY=10;
+  // 7-point trailing moving average = "trend weight"
+  var trend=pts.map(function(_,i){var s=Math.max(0,i-6),seg=pts.slice(s,i+1);return seg.reduce(function(a,x){return a+x.v;},0)/seg.length;});
+  var vals=pts.map(function(p){return p.v;}).concat(trend);
+  var goal=195, showGoal=(Math.min.apply(null,vals)<=goal+8);
+  if(showGoal) vals.push(goal);
+  var lo=Math.min.apply(null,vals), hi=Math.max.apply(null,vals); if(hi-lo<2){hi+=1;lo-=1;}
+  var x=function(i){return padX+(W-2*padX)*(pts.length<2?0:i/(pts.length-1));};
+  var y=function(v){return padY+(H-2*padY)*(1-(v-lo)/(hi-lo));};
+  var dots=pts.map(function(p,i){return '<circle cx="'+x(i).toFixed(1)+'" cy="'+y(p.v).toFixed(1)+'" r="2" fill="var(--muted)" opacity="0.45"/>';}).join("");
+  var line=trend.map(function(v,i){return (i?"L":"M")+x(i).toFixed(1)+","+y(v).toFixed(1);}).join(" ");
+  var goalLine=showGoal?'<line x1="'+padX+'" y1="'+y(goal).toFixed(1)+'" x2="'+(W-padX)+'" y2="'+y(goal).toFixed(1)+'" stroke="var(--gold)" stroke-width="1" stroke-dasharray="3 4" opacity="0.6"/>':"";
+  var lastX=x(pts.length-1), lastY=y(trend[trend.length-1]);
+  svg.innerHTML=goalLine+dots+
+    '<path d="'+line+'" fill="none" stroke="var(--red)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'+
+    '<circle cx="'+lastX.toFixed(1)+'" cy="'+lastY.toFixed(1)+'" r="3.5" fill="var(--red)"/>';
+  document.getElementById("wChartLegend").innerHTML=
+    '<span><b style="color:var(--red)">—</b> trend</span><span style="opacity:.7">• daily</span>'+(showGoal?'<span><b style="color:var(--gold)">- -</b> goal 195</span>':'')+
+    '<span style="margin-left:auto">last '+pts.length+'</span>';
 }
 
 /* ---------- Apple Health stats (Body tab) ---------- */
@@ -641,6 +670,32 @@ document.getElementById("talkBtn").addEventListener("click",function(){
 
 function toast(msg){var t=document.getElementById("toast");t.textContent=msg;t.classList.add("on");setTimeout(function(){t.classList.remove("on");},1600);}
 
+/* ---------- rest timer (auto-starts when a set is completed) ---------- */
+var _rt={left:0,iv:null};
+function rtFmt(s){s=Math.max(0,s);return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
+function rtRender(){var el=document.getElementById("rtTime");if(el)el.textContent=rtFmt(_rt.left);}
+function rtStop(){var box=document.getElementById("restTimer");if(_rt.iv){clearInterval(_rt.iv);_rt.iv=null;}if(box){box.classList.remove("on");box.classList.remove("done");box.setAttribute("aria-hidden","true");}}
+function rtStart(sec){
+  var box=document.getElementById("restTimer");if(!box)return;
+  _rt.left=sec; box.classList.remove("done"); box.classList.add("on"); box.setAttribute("aria-hidden","false"); rtRender();
+  if(_rt.iv)clearInterval(_rt.iv);
+  _rt.iv=setInterval(function(){
+    _rt.left--; rtRender();
+    if(_rt.left<=0){ clearInterval(_rt.iv);_rt.iv=null; box.classList.add("done");
+      try{navigator.vibrate&&navigator.vibrate([120,60,120]);}catch(e){}
+      try{var C=window.AudioContext||window.webkitAudioContext;if(C){var a=new C(),o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=880;g.gain.value=0.05;o.start();setTimeout(function(){o.stop();a.close();},250);}}catch(e){}
+      setTimeout(rtStop,4000);
+    }
+  },1000);
+}
+function rtAdjust(d){ if(!document.getElementById("restTimer").classList.contains("on"))return; _rt.left=Math.max(5,_rt.left+d); if(!_rt.iv)rtStart(_rt.left); else rtRender(); }
+(function(){
+  var m=document.getElementById("rtMinus"),p=document.getElementById("rtPlus"),s=document.getElementById("rtSkip");
+  if(m)m.addEventListener("click",function(){rtAdjust(-15);});
+  if(p)p.addEventListener("click",function(){rtAdjust(15);});
+  if(s)s.addEventListener("click",rtStop);
+})();
+
 /* ---------- forms ---------- */
 document.getElementById("wForm").addEventListener("submit",function(ev){ev.preventDefault();
   var v=parseFloat(document.getElementById("wIn").value);if(isNaN(v))return;var k=iso(viewing);
@@ -648,7 +703,17 @@ document.getElementById("wForm").addEventListener("submit",function(ev){ev.preve
   document.getElementById("wIn").value="";drawWeight();});
 document.getElementById("sForm").addEventListener("submit",function(ev){ev.preventDefault();
   var l=document.getElementById("sLift").value.trim(),w=parseFloat(document.getElementById("sWt").value),r=parseInt(document.getElementById("sReps").value,10);
-  if(!l||isNaN(w)||isNaN(r))return;db.lifts.push({lift:l,wt:w,reps:r,d:iso(viewing)});save();this.reset();drawLifts();});
+  if(!l||isNaN(w)||isNaN(r))return;
+  var prior=db.lifts.filter(function(x){return x.lift.toLowerCase()===l.toLowerCase();});
+  var priorBest=prior.length?Math.max.apply(null,prior.map(function(x){return x.wt;})):null;
+  db.lifts.push({lift:l,wt:w,reps:r,d:iso(viewing)});save();this.reset();drawLifts();
+  if(priorBest!==null && w>priorBest) prFlash(l,w);});
+function prFlash(lift,wt){
+  var el=document.getElementById("prFlash")||(function(){var d=document.createElement("div");d.id="prFlash";d.className="prflash";document.body.appendChild(d);return d;})();
+  el.textContent="🏆 PR — "+lift+" "+wt+" lb!";
+  el.classList.add("on"); try{navigator.vibrate&&navigator.vibrate([60,40,120]);}catch(e){}
+  setTimeout(function(){el.classList.remove("on");},2200);
+}
 document.getElementById("rForm").addEventListener("submit",function(ev){ev.preventDefault();
   var m=parseFloat(document.getElementById("rMi").value),t=document.getElementById("rTime").value.trim();
   if(isNaN(m)||!t)return;db.runs.push({mi:m,t:t,d:iso(viewing)});save();this.reset();drawRuns();});
@@ -1009,10 +1074,10 @@ document.getElementById("coachSend").addEventListener("click",coachSend);
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=19").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=20").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=19; // bump this + version.json + ?v= on every release
+var APPVER=20; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})

@@ -270,6 +270,24 @@
   .swatch .dots{display:flex;gap:4px;flex:none}
   .swatch .dots i{width:14px;height:14px;border-radius:50%;display:block;border:1px solid rgba(255,255,255,.15)}
   .swatch .nm{font-family:var(--display);font-size:11px;font-weight:800;letter-spacing:.04em;color:var(--text)}
+  /* rest timer */
+  #restTimer{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom));
+    z-index:195;display:none;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--red);
+    border-radius:99px;padding:7px 8px 7px 14px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+  #restTimer.on{display:flex}
+  #restTimer .rtmid{display:flex;flex-direction:column;align-items:center;line-height:1;min-width:56px}
+  #restTimer .rtlabel{font-family:var(--display);font-size:8.5px;font-weight:800;letter-spacing:.18em;color:var(--muted)}
+  #restTimer .rttime{font-family:var(--mono);font-size:20px;font-weight:700;color:var(--text);margin-top:2px}
+  #restTimer.done .rttime{color:var(--red)}
+  #restTimer .rtadj{background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+    font-family:var(--display);font-weight:800;font-size:11px;border-radius:99px;padding:8px 10px;cursor:pointer}
+  #restTimer .rtskip{background:var(--red);border:none;color:var(--accent-ink);width:32px;height:32px;border-radius:50%;font-size:14px;cursor:pointer;flex:none}
+  .prflash{position:fixed;left:50%;top:38%;transform:translateX(-50%);z-index:260;background:var(--gold);color:#17161A;
+    font-family:var(--display);font-weight:800;letter-spacing:.03em;font-size:15px;padding:14px 22px;border-radius:14px;
+    box-shadow:0 10px 30px rgba(0,0,0,.45);opacity:0;pointer-events:none;text-align:center}
+  .prflash.on{opacity:1;animation:prpulse .5s ease}
+  @keyframes prpulse{0%{transform:translateX(-50%) scale(.7)}60%{transform:translateX(-50%) scale(1.08)}100%{transform:translateX(-50%) scale(1)}}
+  @media (prefers-reduced-motion:reduce){.prflash.on{animation:none}}
   .reuserow .btn{flex:1;font-size:11px;padding:10px 8px}
   .streak{margin-top:8px;font-size:12.5px;color:var(--gold);font-weight:700}
   .mealrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)}
@@ -441,6 +459,7 @@
       <span class="delta num" id="wDelta"></span>
     </div>
     <div class="avgline" id="wAvg"></div>
+    <div id="wChartWrap" style="display:none"><svg id="wChart" viewBox="0 0 320 96" preserveAspectRatio="none" style="width:100%;height:96px;margin:6px 0 2px;overflow:visible"></svg><div id="wChartLegend" style="font-size:10.5px;color:var(--muted);display:flex;gap:14px;margin-bottom:8px"></div></div>
     <div class="ladder" id="ladder"></div>
     <form class="row" id="wForm">
       <input id="wIn" type="number" step="0.1" min="120" max="400" placeholder="Log today's weight" aria-label="Weight">
@@ -562,6 +581,12 @@
 </div>
 
 
+<div id="restTimer" aria-hidden="true">
+  <button class="rtadj" id="rtMinus" aria-label="Minus 15 seconds">−15</button>
+  <div class="rtmid"><span class="rtlabel">REST</span><span class="rttime num" id="rtTime">1:30</span></div>
+  <button class="rtadj" id="rtPlus" aria-label="Plus 15 seconds">+15</button>
+  <button class="rtskip" id="rtSkip" aria-label="Skip rest">✕</button>
+</div>
 <button id="coachFab" aria-label="Open AI coach">💬</button>
 <div id="coachPanel" aria-hidden="true">
   <div class="coachhead">
@@ -577,6 +602,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=19"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>

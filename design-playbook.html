@@ -1,0 +1,239 @@
+<title>The Platform Design Playbook</title>
+<style>
+  :root{
+    --bg:#f3efe9; --surface:#fffdf9; --surface-2:#efe9e0; --line:#e0d8cc;
+    --ink:#1a1815; --muted:#6b645a; --accent:#d8431c; --accent-2:#8a6a00;
+    --good:#2f7d4f; --warn:#b5851a;
+    --disp:'Oswald',ui-sans-serif,system-ui,sans-serif;
+    --body:'Inter',ui-sans-serif,system-ui,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --bg:#0b0b0c; --surface:#141416; --surface-2:#1c1c1f; --line:#2a2a2e;
+    --ink:#ececec; --muted:#8f8a83; --accent:#ff5a2c; --accent-2:#e0a64b;
+    --good:#4e9f63; --warn:#d4a63c;
+  }}
+  :root[data-theme="dark"]{
+    --bg:#0b0b0c; --surface:#141416; --surface-2:#1c1c1f; --line:#2a2a2e;
+    --ink:#ececec; --muted:#8f8a83; --accent:#ff5a2c; --accent-2:#e0a64b;
+    --good:#4e9f63; --warn:#d4a63c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);
+    line-height:1.6;-webkit-font-smoothing:antialiased;font-size:16px}
+  .wrap{max-width:920px;margin:0 auto;padding:0 20px 80px}
+  h1,h2,h3,h4{font-family:var(--disp);font-weight:700;line-height:1.08;text-wrap:balance;letter-spacing:.01em}
+  .num{font-variant-numeric:tabular-nums}
+  a{color:var(--accent)}
+
+  header.hero{padding:64px 0 32px;border-bottom:3px solid var(--accent);margin-bottom:8px}
+  .eyebrow{font-family:var(--disp);font-weight:600;text-transform:uppercase;letter-spacing:.28em;
+    font-size:12px;color:var(--accent)}
+  header.hero h1{font-size:clamp(38px,8vw,72px);font-weight:800;text-transform:uppercase;margin:.15em 0 .1em}
+  header.hero p{font-size:clamp(16px,2.4vw,20px);color:var(--muted);max-width:60ch;margin:.4em 0 0}
+
+  section{margin-top:52px}
+  h2{font-size:clamp(24px,4vw,34px);text-transform:uppercase;margin:0 0 4px}
+  .lead{color:var(--muted);margin:0 0 22px;max-width:66ch}
+  .rule{height:2px;background:var(--line);border:0;margin:0 0 22px}
+
+  .thesis{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);
+    border-radius:12px;padding:22px 24px;font-size:18px}
+  .thesis b{color:var(--accent)}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px}
+  .card h3{font-size:19px;text-transform:uppercase;margin:0 0 2px;display:flex;align-items:center;gap:8px}
+  .card .role{font-size:11px;font-family:var(--disp);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+  .card ul{margin:0;padding-left:18px}
+  .card li{margin:5px 0;font-size:14.5px}
+  .card li b{color:var(--ink)}
+
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:14px}
+  ol.steps>li{counter-increment:s;background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    padding:18px 20px 18px 60px;position:relative}
+  ol.steps>li::before{content:counter(s);position:absolute;left:16px;top:16px;width:30px;height:30px;
+    background:var(--accent);color:#fff;font-family:var(--disp);font-weight:700;border-radius:8px;
+    display:flex;align-items:center;justify-content:center;font-size:16px}
+  ol.steps h4{font-size:17px;margin:0 0 4px;text-transform:uppercase}
+  ol.steps p{margin:0;font-size:14.5px;color:var(--muted)}
+  ol.steps .tag{display:inline-block;font-family:var(--disp);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+    padding:2px 8px;border-radius:99px;margin-left:8px;vertical-align:middle}
+  .tag.quick{background:color-mix(in srgb,var(--good) 20%,transparent);color:var(--good)}
+  .tag.mid{background:color-mix(in srgb,var(--warn) 22%,transparent);color:var(--warn)}
+  .tag.big{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--accent)}
+
+  .do,.dont{border-radius:12px;padding:18px 20px;border:1px solid var(--line)}
+  .do{background:color-mix(in srgb,var(--good) 8%,var(--surface))}
+  .dont{background:color-mix(in srgb,var(--accent) 8%,var(--surface))}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:640px){.two{grid-template-columns:1fr}}
+  .do h3,.dont h3{margin:0 0 8px;font-size:16px;text-transform:uppercase}
+  .do ul,.dont ul{margin:0;padding-left:18px}.do li,.dont li{margin:5px 0;font-size:14px}
+
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--disp);text-transform:uppercase;letter-spacing:.08em;font-size:12px;color:var(--muted);background:var(--surface-2)}
+  td:first-child{font-weight:600;white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  code{font-family:var(--mono);font-size:13px;background:var(--surface-2);padding:1px 6px;border-radius:5px}
+  .swatches{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+  .sw{display:flex;flex-direction:column;gap:4px;align-items:center;font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .sw i{width:54px;height:38px;border-radius:8px;border:1px solid var(--line)}
+  footer{margin-top:56px;padding-top:20px;border-top:2px solid var(--line);color:var(--muted);font-size:13px}
+</style>
+
+<div class="wrap">
+<header class="hero">
+  <div class="eyebrow">The Platform · Design Recon</div>
+  <h1>The Design Playbook</h1>
+  <p>What the best fitness apps actually do — MacroFactor, Hevy, MyFitnessPal, Cal AI, Cronometer, Whoop &amp; Oura — distilled into patterns worth stealing and a ranked plan for The Platform.</p>
+</header>
+
+<section>
+  <div class="thesis">Nobody mainstream combines <b>macro tracking + a lifting log + a real conversational AI coach</b> in one app. That's The Platform's whole edge. The job to win: <b>log in seconds, know where I stand at a glance, stay accountable</b> — one-handed, on a cut.</div>
+</section>
+
+<section>
+  <h2>What each app teaches us</h2>
+  <p class="lead">One clear lesson from each, mapped to the tab it informs.</p>
+  <div class="grid">
+    <div class="card">
+      <h3>MacroFactor</h3><p class="role">Food · Coach · Dashboard</p>
+      <ul>
+        <li><b>One-tap log from anywhere</b> — a persistent scan/search strip above the tab bar.</li>
+        <li><b>Consumed ↔ remaining toggle</b> on the hero macro widget.</li>
+        <li><b>Trend weight</b> (smoothed line) beats raw scale dots — cheap math, huge calm.</li>
+        <li>Weekly check-in as a <b>conversational accept/decline</b> target change.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Hevy</h3><p class="role">Train</p>
+      <ul>
+        <li><b>Pre-fill last session + 1-tap complete</b> — unchanged set = a single checkmark.</li>
+        <li>Set row = <code># · prev · wt · reps · ✓</code>, aligned numerics.</li>
+        <li><b>3 row states</b> (pending → active → green done); checkmark auto-starts rest timer.</li>
+        <li>Steal Strong's <b>inline PR flash</b> the instant a set beats your best.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>MyFitnessPal + Cal AI</h3><p class="role">Food</p>
+      <ul>
+        <li><b>Recent / frequent foods first</b>, inline <code>+</code> to one-tap add.</li>
+        <li>MFP's 2026 redesign <b>cratered to 1.5★</b> for adding taps — keep it flat.</li>
+        <li>Cal AI's viral trick: <b>meal photos as the log feed</b> (thumbnails, alive).</li>
+        <li>Keep a <b>Quick Add (calories/macros only)</b> escape hatch.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Cronometer</h3><p class="role">Body · Dashboard</p>
+      <ul>
+        <li>One <b>bar primitive</b> (name · bar · amount · %) rendered many times.</li>
+        <li><b>≤3 status colors, unambiguous</b>: grey = under, green = in range, red = over max.</li>
+        <li><b>Curated by default, expand for all</b> — their overwhelm is the warning.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Whoop + Oura</h3><p class="role">Coach · Digest · Body</p>
+      <ul>
+        <li>Coach reply = <b>metric+number → cause → one action</b>.</li>
+        <li><b>One hero number</b> + colored ring + one-line verdict; 3-color bands reused everywhere.</li>
+        <li>Compare <b>to your own baseline</b>, not absolutes ("vs your 3-week avg").</li>
+        <li>Oura's near-free premium tell: <b>one phrase per heading in italic serif</b>.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Carbon Diet Coach</h3><p class="role">Weekly Digest</p>
+      <ul>
+        <li>3-section recap: <b>Updated Targets · Prescribed vs Actual · Goal Progress</b>.</li>
+        <li>Coach voice is <b>restrained, not hype</b> — it explains a <i>no-change</i> too.</li>
+        <li>Targets always shown as <b>net change + reason</b>, never a bare number.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>The build plan for The Platform</h2>
+  <p class="lead">Ranked by impact ÷ effort. Tags: <span class="tag quick">quick</span> <span class="tag mid">medium</span> <span class="tag big">bigger</span></p>
+  <ol class="steps">
+    <li><h4>Bottom tab bar + center "+" FAB <span class="tag quick">quick</span></h4>
+      <p>Move nav to the bottom thumb zone (Home · Food · Train · Body) with a raised center <b>+</b> that opens a quick-log bottom sheet. Every mainstream app agrees; it's the single biggest "native app" upgrade and puts your #1 action dead-center.</p></li>
+    <li><h4>Food tab: one hero number + recents-first logging <span class="tag mid">medium</span></h4>
+      <p>Make <b>calories remaining</b> the huge hero (72–120px, condensed face), macros as thin bars/rings under it with a <b>consumed↔remaining toggle</b>. Surface <b>Recent/Frequent foods</b> with inline <code>+</code> before search or AI. Log path: FAB → bottom sheet → recents → optimistic instant ring update.</p></li>
+    <li><h4>Train tab: the Hevy set-row + auto rest timer <span class="tag mid">medium</span></h4>
+      <p>Pre-fill last session's weight×reps as ghost values so an unchanged set is one checkmark. Row states pending→active→green. Checkmark auto-fires a circular rest timer (±15s). Add an <b>inline PR flash</b> when a set beats your est-1RM best.</p></li>
+    <li><h4>Trend weight line <span class="tag quick">quick</span></h4>
+      <p>Replace/overlay raw scale dots with a smoothed <b>trend line</b> (moving average) on the Body tab. Pure front-end math, and it's the most-praised feature in the whole category — kills weigh-in anxiety on a cut.</p></li>
+    <li><h4>A real Home/Dashboard as the landing screen <span class="tag big">bigger</span></h4>
+      <p>Open on a glance-dashboard, not Train: hero calories-remaining ring + protein, today's workout status, trend-weight sparkline, streak. Progressive disclosure — overview first, drill in on tap. One thing dominates.</p></li>
+    <li><h4>Coach upgrades: chips, data-cards-in-chat, tone toggle <span class="tag mid">medium</span></h4>
+      <p>Seed the empty chat with <b>suggested-prompt chips</b>; render real macro/weight <b>cards inline</b> in replies; enforce the <b>metric→cause→action</b> reply shape; add an Oura-style <b>tone</b> (Encouraging/Direct) toggle. Ground every number in a real data row.</p></li>
+    <li><h4>Weekly Digest → Carbon's 3-section shape <span class="tag quick">quick</span></h4>
+      <p>Restructure the digest into <b>Updated Targets (net change + why, incl. "stay the course") · Prescribed vs Actual · Goal Progress</b>, compared to your own 3-week baseline. You already have the endpoint — this is mostly prompt + layout.</p></li>
+  </ol>
+</section>
+
+<section>
+  <h2>Do / Don't</h2>
+  <div class="two">
+    <div class="do">
+      <h3>✓ Do</h3>
+      <ul>
+        <li>One hero number per screen, huge, condensed face, <code>tabular-nums</code>.</li>
+        <li>ONE accent, used only for progress + CTAs. Near-black base, not pure #000.</li>
+        <li>Three fixed macro colors, identical everywhere (rings, bars, legend).</li>
+        <li>Recents-first logging; optimistic instant updates; bottom sheets over full modals.</li>
+        <li>Compare to the user's own baseline. Explain a no-change.</li>
+        <li>Restrained motion: spring 150–250ms, count-ups, one celebration for real wins.</li>
+      </ul>
+    </div>
+    <div class="dont">
+      <h3>✕ Don't</h3>
+      <ul>
+        <li>Trade daily-driver speed for prettier cards (MFP fell to 1.5★ doing exactly this).</li>
+        <li>Add taps or bury per-meal calories behind navigation.</li>
+        <li>Dump all data at once (Cronometer's overwhelm) — curate, expand on demand.</li>
+        <li>Glow everything, rainbow gradients, buzz-on-every-tap — the AI-slop tells.</li>
+        <li>Let the coach invent numbers; anchor to a real row.</li>
+        <li>Hard-block logging on incomplete fields, or use scroll-dials for dates.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Concrete spec</h2>
+  <h3 style="text-transform:uppercase;font-size:16px;margin:18px 0 8px">Type</h3>
+  <div class="scroll"><table>
+    <tr><th>Role</th><th>Face</th><th>Notes</th></tr>
+    <tr><td>Hero numbers / headings</td><td>Oswald / Bebas / Barlow Condensed</td><td>Condensed = "athletic". 72–120px for the hero stat, weight 700–800.</td></tr>
+    <tr><td>Body / UI</td><td>Inter / Manrope</td><td>Manrope praised for numeric legibility. <code>tabular-nums</code> on all live figures.</td></tr>
+    <tr><td>Premium flourish</td><td>one serif-italic phrase per heading</td><td>Oura's near-free "designed" tell. Use once, not everywhere.</td></tr>
+  </table></div>
+
+  <h3 style="text-transform:uppercase;font-size:16px;margin:22px 0 8px">Macro colors (fixed, reuse everywhere)</h3>
+  <div class="swatches">
+    <div class="sw"><i style="background:#ff5a2c"></i>protein</div>
+    <div class="sw"><i style="background:#5b8def"></i>carbs</div>
+    <div class="sw"><i style="background:#e0a64b"></i>fat</div>
+    <div class="sw"><i style="background:#8f8a83"></i>fiber</div>
+  </div>
+  <p class="lead" style="margin-top:10px">Status colors stay separate from macro colors: <b style="color:var(--good)">green</b> = in range, <b style="color:var(--warn)">amber</b> = watch, <b style="color:var(--accent)">accent/red</b> = over. Never overload one color to mean two things.</p>
+
+  <h3 style="text-transform:uppercase;font-size:16px;margin:22px 0 8px">Layout rules</h3>
+  <div class="scroll"><table>
+    <tr><th>Rule</th><th>Spec</th></tr>
+    <tr><td>Nav</td><td>Bottom bar, 4 tabs + center FAB. Tap targets ≥48px. Scroll padding-bottom ~72px.</td></tr>
+    <tr><td>Base</td><td>Near-black <code>#0B0B0C</code>, surfaces by lightening not borders; text via white-opacity.</td></tr>
+    <tr><td>Rings vs bars</td><td>Rings for the 1–2 hero goals; thin bars for the 4-macro breakdown. Low-opacity unfilled track on dark.</td></tr>
+    <tr><td>Motion</td><td>Spring 150–250ms; count-up on stats via <code>requestAnimationFrame</code>; conic-gradient rings, no library.</td></tr>
+    <tr><td>Feedback</td><td>Vibration API light 10ms tick on log-confirm; optimistic UI everywhere.</td></tr>
+  </table></div>
+</section>
+
+<footer>
+  The Platform · design reconnaissance synthesized from public reviews, help centers, and design write-ups (2024–2026) on MacroFactor, Hevy, Strong, MyFitnessPal, Cal AI, Cronometer, Carbon Diet Coach, RP, Whoop and Oura. Patterns, not pixels — built to implement in HTML/CSS.
+</footer>
+</div>
