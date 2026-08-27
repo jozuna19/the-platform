@@ -82,7 +82,7 @@
   .view.on{display:block}
   /* home dashboard */
   .hero-cal{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--red);border-radius:14px;
-    padding:22px 20px;text-align:center;margin-bottom:14px}
+    padding:22px 20px;text-align:center;margin-bottom:14px;color:var(--text);font-family:var(--body)}
   .hero-cal .big{font-family:var(--display);font-weight:800;font-size:clamp(52px,16vw,84px);line-height:.95;
     letter-spacing:-.02em;font-variant-numeric:tabular-nums}
   .hero-cal .big.over{color:var(--red)}
@@ -90,10 +90,10 @@
   .hero-cal .sub{font-size:13px;color:var(--muted);margin-top:10px}
   .hero-cal .sub b{color:var(--gold)}
   .homecard{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:12px;
-    cursor:pointer;display:flex;align-items:center;gap:14px;text-align:left;width:100%}
+    cursor:pointer;display:flex;align-items:center;gap:14px;text-align:left;width:100%;color:var(--text);font-family:var(--body)}
   .homecard:hover{border-color:var(--gold)}
   .homecard .hc-ic{font-size:22px;flex:none}
-  .homecard .hc-main{flex:1;min-width:0}
+  .homecard .hc-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
   .homecard .hc-t{font-family:var(--display);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
   .homecard .hc-v{font-size:16px;margin-top:2px}
   .homecard .hc-arrow{color:var(--muted);font-size:18px;flex:none}
@@ -632,6 +632,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=21"></script>
+<script src="app.js?v=22"></script>
 </body>
 </html>
