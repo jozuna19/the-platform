@@ -396,9 +396,12 @@ function drawFood(){
     return '<div class="ring '+cls+'"'+(val>tgt?' data-over="1"':'')+'><div class="rv num">'+Math.round(val)+'</div>'+
       '<div class="rt">/ '+tgt+' '+unit+'</div><div class="rk">'+label+'</div><div class="mbar"><span style="width:'+pct+'%"></span></div></div>';
   }
+  var netCarbs=!!db.settings.netCarbs;
+  var carbVal=netCarbs?Math.max(0,tot.c-tot.fib):tot.c;
+  var carbTgt=netCarbs?Math.max(0,tg.c-tg.fib):tg.c;
   document.getElementById("rings").innerHTML=
     ring("cal",tot.cal,calTarget,"kcal","calories")+ring("prot",tot.p,tg.p,"g","protein")+
-    ring("carb",tot.c,tg.c,"g","carbs")+ring("fat",tot.f,tg.f,"g","fat")+ring("",tot.fib,tg.fib,"g","fiber");
+    ring("carb",carbVal,carbTgt,"g",netCarbs?"net carbs":"carbs")+ring("fat",tot.f,tg.f,"g","fat")+ring("",tot.fib,tg.fib,"g","fiber");
   // MyFitnessPal-style exercise line (from Apple Health)
   var ex=document.getElementById("exercise");
   var remaining=calTarget-Math.round(tot.cal);
@@ -407,14 +410,20 @@ function drawFood(){
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'+
       '<div style="font-size:13.5px">🔥 <b>Exercise</b> <span style="color:var(--muted)">— Apple Health</span><br>'+
       '<span class="num" style="font-size:20px;color:var(--gold)">'+burned+'</span> <span style="color:var(--muted);font-size:12px">kcal burned today</span></div>'+
+      '<div style="display:flex;flex-direction:column;gap:6px">'+
       '<label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);cursor:pointer">'+
         '<input type="checkbox" id="eatBack" '+(eatBack?"checked":"")+' style="flex:none;width:18px;height:18px"> add to budget</label>'+
+      '<label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);cursor:pointer">'+
+        '<input type="checkbox" id="netCarbsTgl" '+(netCarbs?"checked":"")+' style="flex:none;width:18px;height:18px"> net carbs</label>'+
+      '</div>'+
     '</div>'+
     (wlist?('<div style="margin-top:10px">'+wlist+'</div>'):'')+
     '<div style="margin-top:10px;font-size:12.5px;color:var(--muted)">Remaining today: <b class="num" style="color:'+(remaining<0?"var(--red)":"var(--green)")+'">'+remaining+'</b> kcal'+
       (eatBack?' <span style="color:var(--muted)">(budget +'+burned+' for exercise)</span>':(burned?' <span style="color:var(--muted)">· '+burned+' available if you eat back</span>':''))+'</div>';
   var ebc=document.getElementById("eatBack");
   if(ebc) ebc.addEventListener("change",function(){db.settings.eatBack=ebc.checked;save();drawFood();});
+  var ncc=document.getElementById("netCarbsTgl");
+  if(ncc) ncc.addEventListener("change",function(){db.settings.netCarbs=ncc.checked;save();drawFood();});
   // staples
   document.getElementById("staples").innerHTML=STAPLES.map(function(s,i){
     return '<button class="staple" data-i="'+i+'">'+esc(s.n)+'<small>'+s.note+'</small></button>';
@@ -422,19 +431,38 @@ function drawFood(){
   Array.prototype.forEach.call(document.querySelectorAll("#staples .staple"),function(b){
     b.addEventListener("click",function(){openStaple(STAPLES[+b.dataset.i]);});
   });
-  // log
+  // log — grouped by meal (Breakfast / Lunch / Dinner / Snacks), each with a subtotal
   var list=foodFor(k);
   document.getElementById("foodEmpty").style.display=list.length?"none":"block";
-  document.getElementById("foodLog").innerHTML=list.map(function(x,i){
-    return '<div class="foodrow"><div class="fn">'+esc(x.name)+'<small>'+esc(x.amt||"")+'</small></div>'+
-      '<div class="fk">'+Math.round(x.cal)+' kcal<br><span style="color:var(--gold)">'+Math.round(x.protein)+'p</span></div>'+
-      '<button class="del" data-i="'+i+'" aria-label="Remove">×</button></div>';
-  }).join("");
+  var MEALS=[["breakfast","Breakfast"],["lunch","Lunch"],["dinner","Dinner"],["snack","Snacks"]];
+  var html="";
+  MEALS.forEach(function(mm){
+    var items=[]; list.forEach(function(x,i){ if(mealOf(x)===mm[0]) items.push({x:x,i:i}); });
+    if(!items.length) return;
+    var st=items.reduce(function(a,o){a.cal+=o.x.cal||0;a.p+=o.x.protein||0;return a;},{cal:0,p:0});
+    html+='<div class="mealgroup"><div class="mealhd"><span>'+mm[1]+'</span><span class="num">'+Math.round(st.cal)+' kcal · '+Math.round(st.p)+'g P</span></div>';
+    html+=items.map(function(o){var x=o.x,i=o.i;
+      return '<div class="foodrow"><div class="fn">'+esc(x.name)+'<small>'+esc(x.amt||"")+' · '+Math.round(x.carbs||0)+'C '+Math.round(x.fat||0)+'F</small></div>'+
+        '<div class="fk">'+Math.round(x.cal)+' kcal<br><span style="color:var(--gold)">'+Math.round(x.protein)+'p</span></div>'+
+        '<select class="mealsel" data-i="'+i+'" aria-label="Move to meal">'+
+          MEALS.map(function(m2){return '<option value="'+m2[0]+'"'+(mealOf(x)===m2[0]?' selected':'')+'>'+m2[1]+'</option>';}).join("")+
+        '</select>'+
+        '<button class="del" data-i="'+i+'" aria-label="Remove">×</button></div>';
+    }).join("");
+    html+='</div>';
+  });
+  document.getElementById("foodLog").innerHTML=html;
   Array.prototype.forEach.call(document.querySelectorAll("#foodLog .del"),function(b){
     b.addEventListener("click",function(){foodFor(k).splice(+b.dataset.i,1);save();drawFood();});
   });
+  Array.prototype.forEach.call(document.querySelectorAll("#foodLog .mealsel"),function(sel){
+    sel.addEventListener("change",function(){foodFor(k)[+sel.dataset.i].meal=sel.value;save();drawFood();});
+  });
   drawStreak(); drawRecent(); drawMeals();
 }
+// which meal an item belongs to — stored value, else inferred from its logged time
+function mealForHour(h){ return h<11?"breakfast":h<15?"lunch":h<21?"dinner":"snack"; }
+function mealOf(x){ if(x.meal) return x.meal; var d=x.ts?new Date(x.ts):new Date(); return mealForHour(d.getHours()); }
 
 /* ---------- MyFitnessPal-style reuse: streak, recent, saved meals, copy day ---------- */
 function foodStreak(){
@@ -524,7 +552,7 @@ Array.prototype.forEach.call(document.querySelectorAll("#dayType button"),functi
   b.addEventListener("click",function(){db.dtype[iso(viewing)]=b.dataset.t;save();drawFood();});
 });
 
-function addFood(item){ foodFor(iso(viewing)).push(item); save(); drawFood(); toast("Logged "+Math.round(item.protein)+"g protein"); }
+function addFood(item){ if(!item.meal) item.meal=mealForHour(new Date().getHours()); foodFor(iso(viewing)).push(item); save(); drawFood(); toast("Logged "+Math.round(item.protein)+"g protein"); }
 function scaleMacros(per,grams){var f=grams/100;return {cal:per.cal*f,protein:per.p*f,carbs:per.c*f,fat:per.f*f,fiber:per.fib*f};}
 
 /* modals */
@@ -557,6 +585,26 @@ function openStaple(s){
   });
   openModal("foodModal"); setTimeout(function(){amt.focus();},100);
 }
+/* Quick Add — calories (+ optional macros/name), no food lookup */
+function openQuickAdd(){
+  document.getElementById("fmTitle").textContent="Quick add";
+  document.getElementById("fmBody").innerHTML=
+    '<input id="qaName" placeholder="Name (optional)" style="width:100%;margin-bottom:8px">'+
+    '<div class="amtrow"><input id="qaCal" type="number" min="0" placeholder="calories" style="flex:1"><input id="qaP" type="number" min="0" placeholder="protein g" style="flex:1"></div>'+
+    '<div class="amtrow" style="margin-top:8px"><input id="qaC" type="number" min="0" placeholder="carbs g" style="flex:1"><input id="qaF" type="number" min="0" placeholder="fat g" style="flex:1"><input id="qaFib" type="number" min="0" placeholder="fiber g" style="flex:1"></div>'+
+    '<button class="btn full" id="qaAdd" style="margin-top:12px">Add to log</button>';
+  document.getElementById("qaAdd").addEventListener("click",function(){
+    var cal=parseFloat(document.getElementById("qaCal").value)||0;
+    if(!cal){toast("Enter calories");return;}
+    addFood({name:document.getElementById("qaName").value.trim()||"Quick add",amt:"",
+      cal:cal,protein:parseFloat(document.getElementById("qaP").value)||0,
+      carbs:parseFloat(document.getElementById("qaC").value)||0,fat:parseFloat(document.getElementById("qaF").value)||0,
+      fiber:parseFloat(document.getElementById("qaFib").value)||0,src:"quick",ts:Date.now()});
+    closeModal("foodModal");
+  });
+  openModal("foodModal"); setTimeout(function(){document.getElementById("qaCal").focus();},100);
+}
+document.getElementById("quickAddBtn").addEventListener("click",openQuickAdd);
 
 /* AI talk/type */
 document.getElementById("talkBtn").addEventListener("click",function(){
@@ -803,10 +851,10 @@ document.getElementById("coachSend").addEventListener("click",coachSend);
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=14").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=15").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=14; // bump this + version.json + ?v= on every release
+var APPVER=15; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
