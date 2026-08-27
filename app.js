@@ -1077,16 +1077,36 @@ function coachContext(){
     loggingStreak:foodStreak()
   };
 }
+var COACH_CHIPS=["How much protein do I have left?","What should I eat for dinner?","How's my week going?","Am I on track for my cut?","What's my workout today?"];
 function coachRender(){
   var box=document.getElementById("coachMsgs");
-  if(!db.chat.length){ box.innerHTML='<div id="coachEmpty">👋 I\'m your coach. I can see your macros, weight, workouts and program — and I remember what you tell me.<br><br>Try: <i>"how much protein do I have left?"</i>, <i>"I ate a chick-fil-a sandwich"</i>, or <i>"remember my left knee hurts on heavy squats"</i>.</div>'; return; }
+  if(!db.chat.length){
+    box.innerHTML='<div id="coachEmpty">👋 I\'m your coach. I see your macros, weight, workouts and program — and I remember what you tell me.'+
+      '<div class="coachchips">'+COACH_CHIPS.map(function(c){return '<button data-chip="'+esc(c)+'">'+esc(c)+'</button>';}).join("")+'</div></div>';
+    Array.prototype.forEach.call(box.querySelectorAll(".coachchips button"),function(b){
+      b.addEventListener("click",function(){document.getElementById("coachText").value=b.dataset.chip;coachSend();});
+    });
+    return;
+  }
   box.innerHTML=db.chat.map(function(m){
     var cls=m.role==="user"?"user":(m.role==="act"?"act":"bot");
     return '<div class="cmsg '+cls+'">'+esc(mdlite(m.content))+'</div>';
   }).join("");
   box.scrollTop=box.scrollHeight;
 }
-function coachOpen(){ document.getElementById("coachPanel").classList.add("on"); document.getElementById("coachPanel").setAttribute("aria-hidden","false"); coachRender(); setTimeout(function(){document.getElementById("coachText").focus();},100); }
+// live data strip at top of the coach panel (the "data card" always in view)
+function drawCoachStrip(){
+  var el=document.getElementById("coachStrip"); if(!el)return;
+  var k=iso(TODAY), tg=targets(k), tot=dayTotals(k);
+  var hd=HEALTH[k]||{}, burned=Math.round(hd.kcalToday||0), eatBack=!!db.settings.eatBack;
+  var calLeft=(tg.cal+(eatBack?burned:0))-Math.round(tot.cal), pLeft=tg.p-Math.round(tot.p);
+  var w=db.weights.slice().sort(function(a,b){return a.d<b.d?-1:1;}), cur=w.length?w[w.length-1].v:null;
+  function cs(v,l){return '<div class="cs"><div class="v">'+v+'</div><div class="l">'+l+'</div></div>';}
+  el.innerHTML=cs(calLeft,"cal left")+cs((pLeft>0?pLeft:"✓"),"protein left")+cs(Math.round(burned),"burned")+(cur!==null?cs(cur.toFixed(1),"weight"):"");
+}
+function coachTone(){ return (db.settings&&db.settings.coachTone)||"encouraging"; }
+function drawToneBtn(){ var b=document.getElementById("coachTone"); if(b)b.textContent=coachTone()==="direct"?"Direct":"Encouraging"; }
+function coachOpen(){ document.getElementById("coachPanel").classList.add("on"); document.getElementById("coachPanel").setAttribute("aria-hidden","false"); drawCoachStrip(); drawToneBtn(); coachRender(); setTimeout(function(){document.getElementById("coachText").focus();},100); }
 function coachClose(){ document.getElementById("coachPanel").classList.remove("on"); document.getElementById("coachPanel").setAttribute("aria-hidden","true"); }
 function coachApply(a){
   if(!a||!a.tool)return null;
@@ -1114,28 +1134,29 @@ function coachSend(){
   var apiMsgs=db.chat.filter(function(m){return m.role==="user"||m.role==="assistant";}).map(function(m){return {role:m.role==="assistant"?"assistant":"user",content:m.content};});
   fetch(cfg.url.replace(/\/$/,"")+"/ai/chat",{method:"POST",
     headers:{"Authorization":"Bearer "+cfg.tok,"Content-Type":"application/json"},
-    body:JSON.stringify({messages:apiMsgs,context:coachContext(),memory:db.memory})})
+    body:JSON.stringify({messages:apiMsgs,context:coachContext(),memory:db.memory,tone:coachTone()})})
    .then(function(r){return r.ok?r.json():r.text().then(function(t){throw new Error(t);});})
    .then(function(out){
      if(out.reply) db.chat.push({role:"assistant",content:out.reply});
      (out.actions||[]).forEach(function(a){ var note=coachApply(a); if(note) db.chat.push({role:"act",content:note}); });
-     save(); coachBusy=false; coachRender();
+     save(); coachBusy=false; coachRender(); drawCoachStrip();
    })
    .catch(function(e){ coachBusy=false; db.chat.push({role:"bot",content:"Something went wrong reaching the coach. Try again."}); coachRender(); });
 }
 document.getElementById("coachFab").addEventListener("click",coachOpen);
 document.getElementById("coachClose").addEventListener("click",coachClose);
 document.getElementById("coachSend").addEventListener("click",coachSend);
+document.getElementById("coachTone").addEventListener("click",function(){db.settings.coachTone=(coachTone()==="direct")?"encouraging":"direct";save();drawToneBtn();toast("Coach tone: "+(coachTone()==="direct"?"Direct":"Encouraging"));});
 (function(){ var ta=document.getElementById("coachText");
   ta.addEventListener("input",function(){ ta.style.height="auto"; ta.style.height=Math.min(120,ta.scrollHeight)+"px"; });
   ta.addEventListener("keydown",function(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); coachSend(); } });
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=22").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=23").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=22; // bump this + version.json + ?v= on every release
+var APPVER=23; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})

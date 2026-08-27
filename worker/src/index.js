@@ -135,7 +135,10 @@ async function anthropic(system, tools, messages, env) {
 async function chatCoach(body, env) {
   const ctx = body.context ? ("CONTEXT (live data):\n" + JSON.stringify(body.context)) : "";
   const mem = (body.memory && body.memory.length) ? ("MEMORY (durable facts about John):\n- " + body.memory.join("\n- ")) : "";
-  const system = COACH_SYSTEM + (ctx ? "\n\n" + ctx : "") + (mem ? "\n\n" + mem : "");
+  const toneLine = body.tone === "direct"
+    ? "\n\nTONE: Direct. Be blunt and concise, no fluff, no cheerleading. Get to the point in as few words as possible."
+    : "\n\nTONE: Encouraging. Be warm, supportive and motivating, while still concrete.";
+  const system = COACH_SYSTEM + (ctx ? "\n\n" + ctx : "") + (mem ? "\n\n" + mem : "") + toneLine;
   const messages = (Array.isArray(body.messages) ? body.messages.slice(-24) : []).map((m) => ({ role: m.role, content: m.content }));
 
   const actions = [];
@@ -190,9 +193,20 @@ export default {
       }
       if (url.pathname === "/ai/digest" && request.method === "POST") {
         const s = await request.json();
-        const sys = `You are John's fitness coach. He's on a CUT (247 -> ~195 lb, high protein, ~1900 kcal/186g protein training days).
+        const sys = `You are John's fitness coach. He's on a CUT (247 -> ~195 lb, high protein, ~1900 kcal/186g protein training days). A healthy cut loses about 1-2 lb/week.
 Here are his last-7-days stats: ${JSON.stringify(s)}.
-Write a SHORT weekly recap (plain text, no markdown, no dashes): 1) one line on how the week went, 2) 2-3 specific things that went well or need fixing (protein consistency, logging adherence, weight trend vs a healthy cut of ~1-2 lb/wk, workouts), 3) one clear focus for next week. Direct, encouraging, no fluff. Under 120 words.`;
+Write a weekly check-in in EXACTLY these three labeled sections, plain text, no markdown, no dashes. Restrained coach voice, not hype. Under 140 words total:
+
+TARGETS
+State whether to change his calorie/protein targets and by how much, with a one-line reason tied to his weight trend and adherence. If progress is on track, explicitly say to stay the course and keep targets the same (a no-change is a valid, good answer).
+
+WEEK IN REVIEW
+His average intake vs his targets and his weight change this week, side by side in words. Note protein consistency and logging adherence (days logged / 7).
+
+FOCUS
+One clear, specific thing to focus on next week.
+
+Put each section header on its own line followed by its text.`;
         const data = await anthropic(sys, [], [{ role: "user", content: "Write the recap." }], env);
         const texts = (data.content || []).filter((x) => x.type === "text" && x.text).map((x) => x.text);
         return json({ text: (texts.join("\n") || "").trim() || "No recap available." }, 200, env);
