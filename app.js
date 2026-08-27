@@ -864,7 +864,7 @@ document.getElementById("digestBtn").addEventListener("click",function(){
        '<div class="ring"><div class="rv num">'+s.daysLogged+'/7</div><div class="rk">days logged</div></div>'+
        '<div class="ring"><div class="rv num">'+(s.weightChangeLb!=null?(s.weightChangeLb>0?"+":"")+s.weightChangeLb:"—")+'</div><div class="rk">lb change</div></div>'+
        '</div>';
-     body.innerHTML=stat+'<div style="white-space:pre-wrap">'+esc((j&&j.text)||"Couldn't generate a recap.")+'</div>';
+     body.innerHTML=stat+'<div style="white-space:pre-wrap">'+esc(mdlite((j&&j.text)||"Couldn't generate a recap."))+'</div>';
    })
    .catch(function(){body.textContent="Couldn't reach the coach. Try again.";});
 });
@@ -978,10 +978,10 @@ document.getElementById("coachSend").addEventListener("click",coachSend);
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=16").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=17").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=16; // bump this + version.json + ?v= on every release
+var APPVER=17; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
