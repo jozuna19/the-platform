@@ -377,9 +377,9 @@ function drawHealthStats(){
 
 /* ---------- FOOD ---------- */
 function dtypeFor(k){ if(db.dtype[k]) return db.dtype[k]; return LIFT_DAYS[new Date(k+"T12:00:00").getDay()]?"train":"rest"; }
-function targets(k){ var t=dtypeFor(k); return t==="train"?{cal:1900,p:186,fib:30}:{cal:1825,p:185,fib:30}; }
+function targets(k){ var t=dtypeFor(k); return t==="train"?{cal:1900,p:186,c:165,f:55,fib:30}:{cal:1825,p:185,c:150,f:55,fib:30}; }
 function foodFor(k){ return db.food[k]||(db.food[k]=[]); }
-function dayTotals(k){ return foodFor(k).reduce(function(a,x){a.cal+=x.cal||0;a.p+=x.protein||0;a.fib+=x.fiber||0;return a;},{cal:0,p:0,fib:0}); }
+function dayTotals(k){ return foodFor(k).reduce(function(a,x){a.cal+=x.cal||0;a.p+=x.protein||0;a.c+=x.carbs||0;a.f+=x.fat||0;a.fib+=x.fiber||0;return a;},{cal:0,p:0,c:0,f:0,fib:0}); }
 
 function drawFood(){
   var k=iso(viewing);
@@ -397,7 +397,8 @@ function drawFood(){
       '<div class="rt">/ '+tgt+' '+unit+'</div><div class="rk">'+label+'</div><div class="mbar"><span style="width:'+pct+'%"></span></div></div>';
   }
   document.getElementById("rings").innerHTML=
-    ring("",tot.cal,calTarget,"kcal","calories")+ring("prot",tot.p,tg.p,"g","protein")+ring("",tot.fib,tg.fib,"g","fiber");
+    ring("cal",tot.cal,calTarget,"kcal","calories")+ring("prot",tot.p,tg.p,"g","protein")+
+    ring("carb",tot.c,tg.c,"g","carbs")+ring("fat",tot.f,tg.f,"g","fat")+ring("",tot.fib,tg.fib,"g","fiber");
   // MyFitnessPal-style exercise line (from Apple Health)
   var ex=document.getElementById("exercise");
   var remaining=calTarget-Math.round(tot.cal);
@@ -736,6 +737,8 @@ function coachContext(){
     weeklySplit:split,
     calories:{eaten:Math.round(tot.cal),target:calTarget,remaining:calTarget-Math.round(tot.cal)},
     protein:{eaten:Math.round(tot.p),target:tg.p,remaining:tg.p-Math.round(tot.p)},
+    carbs:{eaten:Math.round(tot.c),target:tg.c,remaining:tg.c-Math.round(tot.c)},
+    fat:{eaten:Math.round(tot.f),target:tg.f,remaining:tg.f-Math.round(tot.f)},
     fiber:{eaten:Math.round(tot.fib),target:tg.fib},
     exerciseBurnedToday:burned, eatBackOn:eatBack,
     foodLoggedToday:foodFor(k).map(function(x){return x.name+(x.amt?(" "+x.amt):"")+" ("+Math.round(x.protein)+"p/"+Math.round(x.cal)+"kcal)";}),
@@ -800,10 +803,10 @@ document.getElementById("coachSend").addEventListener("click",coachSend);
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=13").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=14").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=13; // bump this + version.json + ?v= on every release
+var APPVER=14; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
