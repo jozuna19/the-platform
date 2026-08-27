@@ -115,7 +115,8 @@ Array.prototype.forEach.call(document.querySelectorAll(".tab"),function(t){
     Array.prototype.forEach.call(document.querySelectorAll(".view"),function(v){v.classList.remove("on");});
     t.setAttribute("aria-selected","true");
     var v=t.dataset.view;
-    document.getElementById("v-"+v).classList.add("on");
+    var ve=document.getElementById("v-"+v); ve.classList.add("on");
+    ve.classList.remove("anim"); void ve.offsetWidth; ve.classList.add("anim"); // retrigger entrance animation
     var db2=document.getElementById("dateBar"); if(db2) db2.style.display=(v==="home")?"none":"";
     if(v==="home") drawHome();
     if(v==="food") pullHealth();
@@ -658,18 +659,37 @@ document.getElementById("quickAddBtn").addEventListener("click",openQuickAdd);
 /* AI talk/type */
 document.getElementById("talkBtn").addEventListener("click",function(){
   document.getElementById("fmTitle").textContent="Talk or type what you ate";
+  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   document.getElementById("fmBody").innerHTML=
-    '<textarea id="aiText" rows="3" placeholder="e.g. 8 oz chicken, a cup of rice, half a cup of black beans" style="width:100%"></textarea>'+
-    '<p style="font-size:11.5px;color:var(--muted);margin:6px 0 12px">Tip: tap the 🎤 on your keyboard to say it out loud.</p>'+
+    '<div class="aiorb" id="aiOrb"><span class="glow"></span><span class="core"></span></div>'+
+    '<div class="aitalkrow"><textarea id="aiText" rows="3" placeholder="e.g. 8 oz chicken, a cup of rice, half a cup of black beans" style="width:100%"></textarea>'+
+    (SR?'<button class="micbtn" id="aiMic" aria-label="Speak">🎤</button>':'')+'</div>'+
+    '<p style="font-size:11.5px;color:var(--muted);margin:6px 0 12px" id="aiTip">'+(SR?'Tap 🎤 and speak — your words appear as you talk.':'Tip: tap the 🎤 on your keyboard to say it out loud.')+'</p>'+
     '<button class="btn gold full" id="aiGo">Parse it</button><div id="aiOut" style="margin-top:14px"></div>';
   openModal("foodModal"); setTimeout(function(){document.getElementById("aiText").focus();},100);
+  // live speech-to-text (interim results stream into the box)
+  if(SR){ var rec=null,recOn=false,baseText="";
+    document.getElementById("aiMic").addEventListener("click",function(){
+      var mic=document.getElementById("aiMic"),orb=document.getElementById("aiOrb"),ta=document.getElementById("aiText");
+      if(recOn && rec){ rec.stop(); return; }
+      try{ rec=new SR(); }catch(e){ return; }
+      rec.lang="en-US"; rec.interimResults=true; rec.continuous=true;
+      baseText=ta.value?ta.value+" ":"";
+      rec.onresult=function(ev){ var s="";for(var i=ev.resultIndex;i<ev.results.length;i++)s+=ev.results[i][0].transcript; ta.value=baseText+s; ta.dispatchEvent(new Event("input")); };
+      rec.onend=function(){ recOn=false; mic.classList.remove("on"); orb.classList.remove("thinking"); document.getElementById("aiTip").textContent="Tap 🎤 and speak — your words appear as you talk."; baseText=ta.value?ta.value+" ":""; };
+      rec.onerror=function(){ recOn=false; mic.classList.remove("on"); orb.classList.remove("thinking"); };
+      rec.start(); recOn=true; mic.classList.add("on"); orb.classList.add("thinking"); document.getElementById("aiTip").textContent="Listening… tap 🎤 again to stop.";
+    });
+  }
   document.getElementById("aiGo").addEventListener("click",function(){
     if(!cfg.url||!cfg.tok){document.getElementById("aiOut").innerHTML='<p style="color:var(--red);font-size:12.5px">Connect cloud sync first (⤢ up top) — the AI runs through your synced backend.</p>';return;}
     var text=document.getElementById("aiText").value.trim(); if(!text)return;
+    var orb=document.getElementById("aiOrb"); if(orb)orb.classList.add("thinking");
     var out=document.getElementById("aiOut"); out.innerHTML='<p style="color:var(--muted);font-size:12.5px">Thinking…</p>';
     fetch(cfg.url.replace(/\/$/,"")+"/ai/parse",{method:"POST",headers:{"Authorization":"Bearer "+cfg.tok,"Content-Type":"application/json"},body:JSON.stringify({text:text})})
      .then(function(r){return r.json();})
      .then(function(j){
+       if(orb)orb.classList.remove("thinking");
        var items=(j&&j.items)||[];
        if(!items.length){out.innerHTML='<p style="color:var(--muted);font-size:12.5px">Couldn\'t find a food in that. Try again.</p>';return;}
        out.innerHTML=items.map(function(it,i){
@@ -681,7 +701,7 @@ document.getElementById("talkBtn").addEventListener("click",function(){
          closeModal("foodModal");
        });
      })
-     .catch(function(){out.innerHTML='<p style="color:var(--red);font-size:12.5px">Network error. Check your connection.</p>';});
+     .catch(function(){if(orb)orb.classList.remove("thinking");out.innerHTML='<p style="color:var(--red);font-size:12.5px">Network error. Check your connection.</p>';});
   });
 });
 
@@ -1153,10 +1173,10 @@ document.getElementById("coachTone").addEventListener("click",function(){db.sett
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=23").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=24").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=23; // bump this + version.json + ?v= on every release
+var APPVER=24; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
