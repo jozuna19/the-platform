@@ -80,6 +80,9 @@
   .logfab:active{transform:scale(.94)}
   .view{display:none}
   .view.on{display:block}
+  .nhlink{background:none;border:none;padding:0;cursor:pointer;font-family:var(--display);
+    font-size:12.5px;font-weight:700;letter-spacing:.03em;color:var(--muted)}
+  .nhlink:active{opacity:.6}
   /* home dashboard */
   .hero-cal{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--red);border-radius:14px;
     padding:22px 20px;text-align:center;margin-bottom:14px;color:var(--text);font-family:var(--body)}
@@ -524,16 +527,18 @@
 
 <!-- BODY -->
 <div class="view" id="v-body">
-  <div class="panel" id="nativeHealthPanel" style="display:none">
-    <div class="head" style="border:none;padding:0"><h3>Apple Health &middot; device sync</h3><span id="nhDot" style="width:11px;height:11px;border-radius:50%;background:var(--muted);align-self:center"></span></div>
-    <div id="nhStatus" style="font-size:13px;color:var(--muted);margin:8px 0 2px">Checking…</div>
-    <div id="nhSummary" style="font-size:12.5px;color:var(--muted);margin-bottom:12px"></div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="mini" id="nhResync" style="flex:1;min-width:120px">↻ Resync now</button>
-      <button class="mini" id="nhReconnect" style="flex:1;min-width:120px">♥ Reconnect</button>
-      <button class="mini" id="nhSettings" style="flex:1;min-width:120px">⚙ iOS Settings</button>
+  <div class="panel" id="nativeHealthPanel" style="display:none;padding:14px 16px">
+    <div style="display:flex;align-items:center;gap:9px">
+      <span id="nhDot" style="width:9px;height:9px;border-radius:50%;background:var(--muted);flex:none"></span>
+      <span style="font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--text)">Apple Health</span>
+      <span id="nhStatus" style="font-size:12px;color:var(--muted);margin-left:auto;text-align:right">…</span>
     </div>
-    <p style="font-size:11.5px;color:var(--muted);margin-top:10px">Data looks old? Tap Resync. Still off → iOS Settings &rarr; Health &rarr; Data Access &amp; Devices &rarr; Platform, turn everything ON, then Reconnect.</p>
+    <div id="nhSummary" style="font-size:12px;color:var(--muted);margin:6px 0 0;padding-left:18px"></div>
+    <div style="display:flex;gap:14px;margin-top:11px;padding-left:18px">
+      <button id="nhResync" class="nhlink" style="color:var(--gold)">Resync</button>
+      <button id="nhReconnect" class="nhlink">Reconnect</button>
+      <button id="nhSettings" class="nhlink" style="margin-left:auto">Settings</button>
+    </div>
   </div>
   <div class="panel" id="healthPanel" style="display:none">
     <h3>Today &middot; Apple Health</h3>
@@ -692,6 +697,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=26"></script>
+<script src="app.js?v=27"></script>
 </body>
 </html>

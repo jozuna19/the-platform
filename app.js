@@ -1196,7 +1196,7 @@ document.getElementById("coachTone").addEventListener("click",function(){db.sett
 if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=24").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=26; // bump this + version.json + ?v= on every release
+var APPVER=27; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
