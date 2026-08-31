@@ -1047,6 +1047,11 @@ function nhSend(action){ try{ if(window.webkit&&window.webkit.messageHandlers&&w
 window.__platformHealth={ state:null, update:function(s){ this.state=s; drawNativeHealth(); } };
 function drawNativeHealth(){
   var p=document.getElementById("nativeHealthPanel"); if(!p)return;
+  // Hidden: native HealthKit reader can't run under SideStore free signing, so
+  // Health data comes via Auto Export (shown in the main card below). Keeping the
+  // bridge code + markup in place so it flips back on with a $99 dev-account build.
+  p.style.display="none"; return;
+  /* eslint-disable no-unreachable */
   if(!window.__isNativeApp){ p.style.display="none"; return; }
   p.style.display="block";
   var s=window.__platformHealth.state;
@@ -1196,7 +1201,7 @@ document.getElementById("coachTone").addEventListener("click",function(){db.sett
 if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=24").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=27; // bump this + version.json + ?v= on every release
+var APPVER=28; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
