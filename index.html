@@ -39,7 +39,7 @@
     --gold:#D4A63C;--green:#4E9F63;
   }
   *{box-sizing:border-box}
-  html{overscroll-behavior:none;height:100%}
+  html{overscroll-behavior:none}
   body{margin:0;background:var(--bg);color:var(--text);font-family:var(--body);
     line-height:1.5;-webkit-font-smoothing:antialiased;overscroll-behavior:none;
     padding:0 16px calc(96px + env(safe-area-inset-bottom));}
@@ -68,9 +68,9 @@
   /* bottom tab bar */
   .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:100;display:flex;align-items:center;justify-content:space-around;
     background:var(--surface);border-top:1px solid var(--border);
-    padding:6px 6px calc(6px + env(safe-area-inset-bottom));gap:2px}
-  /* fill the home-indicator safe area below the bar so no black gap shows */
-  .tabbar::after{content:"";position:absolute;left:0;right:0;top:100%;height:80px;background:var(--surface)}
+    padding:6px 6px 8px;gap:2px}
+  /* paint the bar's colour through the home-indicator zone so no black gap shows below it */
+  .tabbar::after{content:"";position:absolute;left:0;right:0;top:99%;height:160px;background:var(--surface)}
   .tabbar .tab{flex:1;background:none;border:none;color:var(--muted);cursor:pointer;
     display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;border-radius:10px;min-height:48px}
   .tabbar .tab .ti{font-size:20px;line-height:1;filter:grayscale(1) opacity(.7)}
@@ -704,6 +704,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=31"></script>
+<script src="app.js?v=32"></script>
 </body>
 </html>
