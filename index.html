@@ -524,6 +524,17 @@
 
 <!-- BODY -->
 <div class="view" id="v-body">
+  <div class="panel" id="nativeHealthPanel" style="display:none">
+    <div class="head" style="border:none;padding:0"><h3>Apple Health &middot; device sync</h3><span id="nhDot" style="width:11px;height:11px;border-radius:50%;background:var(--muted);align-self:center"></span></div>
+    <div id="nhStatus" style="font-size:13px;color:var(--muted);margin:8px 0 2px">Checking…</div>
+    <div id="nhSummary" style="font-size:12.5px;color:var(--muted);margin-bottom:12px"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="mini" id="nhResync" style="flex:1;min-width:120px">↻ Resync now</button>
+      <button class="mini" id="nhReconnect" style="flex:1;min-width:120px">♥ Reconnect</button>
+      <button class="mini" id="nhSettings" style="flex:1;min-width:120px">⚙ iOS Settings</button>
+    </div>
+    <p style="font-size:11.5px;color:var(--muted);margin-top:10px">Data looks old? Tap Resync. Still off → iOS Settings &rarr; Health &rarr; Data Access &amp; Devices &rarr; Platform, turn everything ON, then Reconnect.</p>
+  </div>
   <div class="panel" id="healthPanel" style="display:none">
     <h3>Today &middot; Apple Health</h3>
     <div class="rings" id="healthStats"></div>
@@ -681,6 +692,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=25"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>

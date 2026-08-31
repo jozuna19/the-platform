@@ -1042,7 +1042,28 @@ function drawHome(){
     b.addEventListener("click",function(){var v=b.dataset.go;var t=document.querySelector('.tab[data-view="'+v+'"]');if(t)t.click();});
   });
 }
-function renderAll(){drawHome();drawRail();drawTrainCard();drawLifts();drawRuns();drawWeight();drawFood();drawHealthStats();drawTargets();drawRecipes();updateFoot();}
+/* ---- Native shell: Apple Health device-sync panel (only inside the iOS app) ---- */
+function nhSend(action){ try{ if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.platformHealth){ window.webkit.messageHandlers.platformHealth.postMessage({action:action}); } }catch(e){} }
+window.__platformHealth={ state:null, update:function(s){ this.state=s; drawNativeHealth(); } };
+function drawNativeHealth(){
+  var p=document.getElementById("nativeHealthPanel"); if(!p)return;
+  if(!window.__isNativeApp){ p.style.display="none"; return; }
+  p.style.display="block";
+  var s=window.__platformHealth.state;
+  var dot=document.getElementById("nhDot"), st=document.getElementById("nhStatus"), sum=document.getElementById("nhSummary");
+  if(!s){ dot.style.background="var(--muted)"; st.textContent="Tap Resync to pull your latest Apple Health data."; sum.textContent=""; return; }
+  var ok=!!s.connected;
+  dot.style.background=ok?"var(--green)":"#E0A64B";
+  if(s.error){ st.innerHTML='<b style="color:var(--red)">'+esc(s.error)+'</b>'; }
+  else { st.innerHTML=ok?('Connected &middot; last sync <b>'+esc(s.syncedAt||"")+'</b>'):'Not synced yet'; }
+  sum.textContent=s.summary||"";
+}
+(function(){
+  function wire(id,act){ var b=document.getElementById(id); if(b)b.addEventListener("click",function(){ nhSend(act); if(act!=="openSettings"){ document.getElementById("nhStatus").textContent="Syncing…"; } }); }
+  wire("nhResync","resync"); wire("nhReconnect","reconnect"); wire("nhSettings","openSettings");
+  if(window.__isNativeApp){ drawNativeHealth(); nhSend("status"); }
+})();
+function renderAll(){drawHome();drawRail();drawTrainCard();drawLifts();drawRuns();drawWeight();drawFood();drawHealthStats();drawNativeHealth();drawTargets();drawRecipes();updateFoot();}
 drawDateBar();
 renderAll();
 setSync(cfg.url&&cfg.tok?"ok":"");
@@ -1175,7 +1196,7 @@ document.getElementById("coachTone").addEventListener("click",function(){db.sett
 if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=24").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=25; // bump this + version.json + ?v= on every release
+var APPVER=26; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
