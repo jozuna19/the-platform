@@ -1028,16 +1028,22 @@ function drawHome(){
   var greeting=(TODAY.getHours()<12?"Good morning":TODAY.getHours()<18?"Good afternoon":"Good evening");
   function card(view,ic,t,v){return '<button class="homecard" data-go="'+view+'"><span class="hc-ic">'+ic+'</span><span class="hc-main"><span class="hc-t">'+t+'</span><span class="hc-v">'+esc(v)+'</span></span><span class="hc-arrow">›</span></button>';}
   box.innerHTML=
-    '<div style="margin:6px 0 12px;color:var(--muted);font-size:13px">'+greeting+', John.'+(streak>=2?' <b style="color:var(--gold)">🔥 '+streak+"-day streak</b>":"")+'</div>'+
-    '<button class="hero-cal" data-go="food" style="display:block;width:100%;border-width:1px 1px 1px 3px;cursor:pointer">'+
-      '<div class="big'+(over?" over":"")+'">'+(over?"+"+Math.abs(remain):remain)+'</div>'+
-      '<div class="cap">'+(over?"calories over":"calories left")+'</div>'+
-      '<div class="sub"><b>'+Math.round(tot.cal)+'</b> / '+calTarget+' kcal &nbsp;·&nbsp; protein <b>'+Math.round(tot.p)+'</b>/'+tg.p+'g'+(pRemain>0?" ("+pRemain+" to go)":" ✓")+'</div>'+
-    '</button>'+
-    card("train","🏋️","Today's workout",woV)+
-    card("body","📊","Bodyweight",wV)+
-    card("food","🍽️","Eaten today",Math.round(tot.cal)+" kcal · "+Math.round(tot.p)+"g P · "+foodFor(k).length+" items")+
-    (hStats.length?card("body","⌚","Apple Health",hStats.join(" · ")):"");
+    // top block: greeting + hero calories
+    '<div class="homeTop">'+
+      '<div style="margin:6px 0 12px;color:var(--muted);font-size:13px">'+greeting+', John.'+(streak>=2?' <b style="color:var(--gold)">🔥 '+streak+"-day streak</b>":"")+'</div>'+
+      '<button class="hero-cal" data-go="food" style="display:block;width:100%;border-width:1px 1px 1px 3px;cursor:pointer;margin-bottom:0">'+
+        '<div class="big'+(over?" over":"")+'">'+(over?"+"+Math.abs(remain):remain)+'</div>'+
+        '<div class="cap">'+(over?"calories over":"calories left")+'</div>'+
+        '<div class="sub"><b>'+Math.round(tot.cal)+'</b> / '+calTarget+' kcal &nbsp;·&nbsp; protein <b>'+Math.round(tot.p)+'</b>/'+tg.p+'g'+(pRemain>0?" ("+pRemain+" to go)":" ✓")+'</div>'+
+      '</button>'+
+    '</div>'+
+    // bottom block: quick cards, anchored above the tab bar
+    '<div class="homeBottom">'+
+      card("train","🏋️","Today's workout",woV)+
+      card("body","📊","Bodyweight",wV)+
+      card("food","🍽️","Eaten today",Math.round(tot.cal)+" kcal · "+Math.round(tot.p)+"g P · "+foodFor(k).length+" items")+
+      (hStats.length?card("body","⌚","Apple Health",hStats.join(" · ")):"")+
+    '</div>';
   Array.prototype.forEach.call(box.querySelectorAll(".homecard,.hero-cal"),function(b){
     b.addEventListener("click",function(){var v=b.dataset.go;var t=document.querySelector('.tab[data-view="'+v+'"]');if(t)t.click();});
   });
@@ -1201,7 +1207,7 @@ document.getElementById("coachTone").addEventListener("click",function(){db.sett
 if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=24").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=30; // bump this + version.json + ?v= on every release
+var APPVER=31; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
