@@ -3,16 +3,15 @@
 
 /* ---------- The Cut program (by weekday 0=Sun..6=Sat) ---------- */
 var PROGRAM = {
-  2:{name:"Lower",type:"lower",tag:"The one that has to happen",focus:"Main lifts stop 2 reps short of failure.",
-     ex:[["Squat","4 × 5"],["Trap-Bar Deadlift / RDL","3 × 6"],["Split Squat","3 × 10 ea"],["Leg Curl","3 × 12"],["Standing Calf Raise","3 × 15"]]},
-  4:{name:"Upper A",type:"upper",tag:"Push + pull",focus:"Leave 2 in the tank on the barbell work.",
-     ex:[["Bench","4 × 6"],["Row","4 × 8"],["Overhead Press","3 × 8"],["Lat Pulldown","3 × 10"]]},
-  5:{name:"Upper B",type:"upper",tag:"Hypertrophy + delts",focus:"Chase the taper. Accessories closer to failure.",
-     ex:[["Incline DB Press","4 × 8"],["Chest-Supported Row","4 × 10"],["Lateral Raise","3 × 15"],["Curls","3 × 12"],["Triceps","3 × 12"]]},
-  0:{name:"Lower B",type:"lower",tag:"Optional 4th",focus:"If Tuesday slipped, this becomes the real lower day.",optional:true,
-     ex:[["Leg Press","3 × 12"],["Walking Lunge","3 × 10 ea"],["Leg Extension","3 × 15"],["Leg Curl","3 × 15"],["Abs","3 × 12"]]},
+  2:{name:"Push",type:"upper",tag:"Chest · shoulders · triceps",focus:"Heavy pressing, 2 reps shy of failure. Accessories closer to failure.",
+     ex:[["Bench","4 × 6"],["Incline DB Press","3 × 8"],["Overhead Press","3 × 8"],["Lateral Raise","3 × 15"],["Triceps Pushdown","3 × 12"]]},
+  5:{name:"Pull",type:"upper",tag:"Back · biceps",focus:"Row and pull with intent. Squeeze every rep, leave 1-2 in the tank on the heavy rows.",
+     ex:[["Barbell Row","4 × 8"],["Lat Pulldown","3 × 10"],["Chest-Supported Row","3 × 10"],["Face Pull","3 × 15"],["Biceps Curl","3 × 12"]]},
+  0:{name:"Legs",type:"lower",tag:"Your weekend leg day",focus:"Main lifts stop 2 reps short of failure. This + soccer is all the legs you need.",
+     ex:[["Squat","4 × 5"],["Romanian Deadlift","3 × 8"],["Leg Press","3 × 12"],["Leg Curl","3 × 12"],["Standing Calf Raise","3 × 15"]]},
   3:{name:"Soccer",cardio:true,focus:"~2.5 hrs. This is your conditioning — don't add cardio on top.",note:"Hydrate hard."},
   1:{name:"Rest",rest:true,focus:"Recovery + Amy. Hit protein, get your steps.",note:""},
+  4:{name:"Rest",rest:true,focus:"Recovery + Amy. Hit protein, get your steps.",note:""},
   6:{name:"Rest",rest:true,focus:"Recovery + Amy. Hit protein, get your steps.",note:""}
 };
 /* exercise library for the picker + rule-based suggestions, by day type */
@@ -21,10 +20,10 @@ var EXLIB = {
   lower:["Back Squat","Front Squat","Leg Press","Romanian Deadlift","Trap-Bar Deadlift","Split Squat","Walking Lunge","Bulgarian Split Squat","Leg Curl","Leg Extension","Hip Thrust","Standing Calf Raise","Seated Calf Raise","Hack Squat"],
   core:["Plank","Hanging Leg Raise","Cable Crunch","Ab Wheel","Russian Twist","Back Extension"]
 };
-var SHORT={0:"Lower B",1:"Rest",2:"Lower",3:"Soccer",4:"Upper A",5:"Upper B",6:"Rest"};
+var SHORT={0:"Legs",1:"Rest",2:"Push",3:"Soccer",4:"Rest",5:"Pull",6:"Rest"};
 var LET=["S","M","T","W","T","F","S"];
 var START=247, RUNGS=[247,235,225,215,205,195];
-var LIFT_DAYS={0:1,2:1,4:1,5:1}; // training-macro default
+var LIFT_DAYS={0:1,2:1,3:1,5:1}; // training-macro default (Push Tue, Soccer Wed, Pull Fri, Legs Sun)
 
 /* ---------- staple foods (per 100g unless noted) ---------- */
 var OZ=28.35;
@@ -1176,7 +1175,7 @@ document.getElementById("coachTone").addEventListener("click",function(){db.sett
 if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=24").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=24; // bump this + version.json + ?v= on every release
+var APPVER=25; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
