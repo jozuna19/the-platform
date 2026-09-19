@@ -41,10 +41,14 @@
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html{overscroll-behavior:none;height:100%;-webkit-text-size-adjust:100%}
   /* App shell: the BODY never scrolls (so iOS can never move the fixed tab bar); .wrap is the one scroller. */
-  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--body);
+  /* NOTE: no overflow:hidden on body — on iOS it propagates to the viewport and CLIPS the tab bar's
+     fill below bottom:0 (the home-indicator zone), leaving a black band under the bar. Body has no
+     in-flow content (.wrap is absolute), so it never scrolls anyway. */
+  body{margin:0;background:var(--surface);color:var(--text);font-family:var(--body);
     line-height:1.5;-webkit-font-smoothing:antialiased;overscroll-behavior:none;
-    position:fixed;inset:0;overflow:hidden;touch-action:manipulation;
+    position:fixed;inset:0;touch-action:manipulation;
     -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  .wrap{background:var(--bg)}
   input,textarea,select,[contenteditable]{-webkit-user-select:text;user-select:text}
   .wrap{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:none;
     padding:0 16px calc(96px + env(safe-area-inset-bottom));scrollbar-width:none}
@@ -76,7 +80,8 @@
     background:var(--surface);border-top:1px solid var(--border);
     padding:6px 6px 8px;gap:2px}
   /* paint the bar's colour through the home-indicator zone so no black gap shows below it */
-  .tabbar::after{content:"";position:absolute;left:0;right:0;top:99%;height:160px;background:var(--surface)}
+  .tabbar::after{content:"";position:absolute;left:0;right:0;top:99%;height:200px;background:var(--surface)}
+  html{background:var(--surface)} /* belt and braces: whatever iOS shows below the layout viewport is bar-colored, never black */
   .tabbar .tab{flex:1;background:none;border:none;color:var(--muted);cursor:pointer;position:relative;
     display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;border-radius:10px;min-height:48px}
   .tabbar .tab .ti{font-size:20px;line-height:1;filter:grayscale(1) opacity(.7);transition:transform .25s cubic-bezier(.22,1,.36,1),filter .2s}
@@ -817,6 +822,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=35"></script>
+<script src="app.js?v=36"></script>
 </body>
 </html>
