@@ -7,12 +7,12 @@ var PROGRAM = {
      ex:[["Bench","4 × 6"],["Incline DB Press","3 × 8"],["Overhead Press","3 × 8"],["Lateral Raise","3 × 15"],["Triceps Pushdown","3 × 12"]]},
   5:{name:"Pull",type:"upper",tag:"Back · biceps",focus:"Row and pull with intent. Squeeze every rep, leave 1-2 in the tank on the heavy rows.",
      ex:[["Barbell Row","4 × 8"],["Lat Pulldown","3 × 10"],["Chest-Supported Row","3 × 10"],["Face Pull","3 × 15"],["Biceps Curl","3 × 12"]]},
-  0:{name:"Legs",type:"lower",tag:"Your weekend leg day",focus:"Main lifts stop 2 reps short of failure. This + soccer is all the legs you need.",
+  0:{name:"Legs",type:"lower",tag:"Your weekend leg day",focus:"Main lifts stop 2 reps short of failure. Long run was yesterday: if the legs are heavy, drop a set, not the session.",
      ex:[["Squat","4 × 5"],["Romanian Deadlift","3 × 8"],["Leg Press","3 × 12"],["Leg Curl","3 × 12"],["Standing Calf Raise","3 × 15"]]},
-  3:{name:"Soccer",cardio:true,focus:"~2.5 hrs. This is your conditioning — don't add cardio on top.",note:"Hydrate hard."},
-  1:{name:"Rest",rest:true,focus:"Recovery + Amy. Hit protein, get your steps.",note:""},
-  4:{name:"Rest",rest:true,focus:"Recovery + Amy. Hit protein, get your steps.",note:""},
-  6:{name:"Rest",rest:true,focus:"Recovery + Amy. Hit protein, get your steps.",note:""}
+  3:{name:"Soccer",cardio:true,focus:"~2.5 hrs. This is your conditioning — don't add cardio on top.",note:"Electrolytes before, hydrate hard."},
+  1:{name:"Rest",rest:true,focus:"No lifting. Hit protein, get your steps.",note:""},
+  4:{name:"Rest",rest:true,focus:"No lifting. Hit protein, get your steps.",note:""},
+  6:{name:"Rest",rest:true,focus:"No lifting. Hit protein, get your steps.",note:""}
 };
 /* exercise library for the picker + rule-based suggestions, by day type */
 var EXLIB = {
@@ -23,7 +23,7 @@ var EXLIB = {
 var SHORT={0:"Legs",1:"Rest",2:"Push",3:"Soccer",4:"Rest",5:"Pull",6:"Rest"};
 var LET=["S","M","T","W","T","F","S"];
 var START=247, RUNGS=[247,235,225,215,205,195];
-var LIFT_DAYS={0:1,2:1,3:1,5:1}; // training-macro default (Push Tue, Soccer Wed, Pull Fri, Legs Sun)
+var LIFT_DAYS={0:1,2:1,3:1,5:1,6:1}; // training-macro default (Push Tue, Soccer Wed, Pull Fri, Sat long run, Legs Sun)
 
 /* ---------- staple foods (per 100g unless noted) ---------- */
 var OZ=28.35;
@@ -51,6 +51,8 @@ db.meals=db.meals||[];
 db.chat=db.chat||[];    // AI coach conversation (synced)
 db.memory=db.memory||[]; // durable facts the coach remembers
 db.recipes=db.recipes||[]; // saved recipes (per-serving macros)
+db.feel=db.feel||{};       // daily check-in {date:{mood,tags,ts}} the run coach reads
+db.coachToday=db.coachToday||{}; // cached run-coach card per day {date:{key,headline,why,call,ts}}
 if(db.health){delete db.health;} // health now lives server-side in its own store
 var HEALTH={}; // Apple Health data, read-only from the backend (never synced up)
 try{ cfg=JSON.parse(localStorage.getItem(CFGKEY))||{}; }catch(e){ cfg={}; }
@@ -100,6 +102,7 @@ function pull(cb){
        db.runs=db.runs||[];db.food=db.food||{};db.dtype=db.dtype||{};db.meta=db.meta||{updated:0};
        db.settings=db.settings||{eatBack:false};db.meals=db.meals||[];
        db.chat=db.chat||[];db.memory=db.memory||[];db.recipes=db.recipes||[];
+       db.feel=db.feel||{};db.coachToday=db.coachToday||{};
        localSave();
      }
      setSync("ok"); if(cb)cb();
@@ -116,22 +119,31 @@ Array.prototype.forEach.call(document.querySelectorAll(".tab"),function(t){
     var v=t.dataset.view;
     var ve=document.getElementById("v-"+v); ve.classList.add("on");
     ve.classList.remove("anim"); void ve.offsetWidth; ve.classList.add("anim"); // retrigger entrance animation
-    var db2=document.getElementById("dateBar"); if(db2) db2.style.display=(v==="home")?"none":"";
+    var db2=document.getElementById("dateBar"); if(db2) db2.style.display=(v==="home"||v==="run")?"none":"";
     if(v==="home") drawHome();
     if(v==="food") pullHealth();
+    if(v==="run"){ drawRun(); pullStrava(false); }
     window.scrollTo(0,0);
   });
 });
-/* center + FAB — quick log from any tab */
+/* any element with data-go="view" jumps to that tab */
+document.addEventListener("click",function(e){
+  var el=e.target&&e.target.closest?e.target.closest("[data-go]"):null; if(!el)return;
+  var t=document.querySelector('.tab[data-view="'+el.getAttribute("data-go")+'"]'); if(t)t.click();
+});
+/* floating + — quick log from any tab */
 (function(){var f=document.getElementById("logFab"); if(!f)return;
   f.addEventListener("click",function(){
     document.getElementById("fmTitle").textContent="Quick log";
     document.getElementById("fmBody").innerHTML=
       '<button class="btn gold full" id="qlTalk" style="margin-bottom:10px">🎤 Talk or type what you ate</button>'+
-      '<button class="btn full" id="qlQuick">➕ Quick add (calories/macros)</button>';
+      '<button class="btn full" id="qlQuick" style="margin-bottom:10px">➕ Quick add (calories/macros)</button>'+
+      '<div style="display:flex;gap:8px"><button class="btn ghost full" id="qlWeight">⚖️ Log weight</button><button class="btn ghost full" id="qlFeel">🏃 Run check-in</button></div>';
     openModal("foodModal");
     document.getElementById("qlTalk").addEventListener("click",function(){closeModal("foodModal");document.getElementById("talkBtn").click();});
     document.getElementById("qlQuick").addEventListener("click",function(){closeModal("foodModal");openQuickAdd();});
+    document.getElementById("qlWeight").addEventListener("click",function(){closeModal("foodModal");var t=document.querySelector('.tab[data-view="body"]');if(t)t.click();setTimeout(function(){var i=document.getElementById("wIn");if(i){i.scrollIntoView({block:"center",behavior:"smooth"});i.focus();}},260);});
+    document.getElementById("qlFeel").addEventListener("click",function(){closeModal("foodModal");var t=document.querySelector('.tab[data-view="run"]');if(t)t.click();setTimeout(function(){var m=document.querySelector(".feelrow");if(m)m.scrollIntoView({block:"center",behavior:"smooth"});},260);});
   });
 })();
 // hide the date bar on the default Home view at load
@@ -170,7 +182,7 @@ function drawRail(){
     var d=new Date(ws);d.setDate(ws.getDate()+i);var k=iso(d),dow=d.getDay();
     html+='<button class="day" data-i="'+i+'"'+(k===iso(viewing)?' data-viewing="1"':'')+
       (k===iso(TODAY)?' data-today="1"':'')+(isDayDone(k,dow)?' data-done="1"':'')+
-      '><span class="dl">'+LET[dow]+'</span><span class="dt">'+SHORT[dow]+'</span></button>';
+      '><span class="dl">'+LET[dow]+'</span><span class="dt">'+railLabel(k,dow)+'</span></button>';
   }
   document.getElementById("rail").innerHTML=html;
   Array.prototype.forEach.call(document.querySelectorAll("#rail .day"),function(b){
@@ -184,7 +196,9 @@ function drawTrainCard(){
     '</h2><span class="date">'+(isToday?"Today &middot; ":"")+label+'</span></div>'+
     '<div class="focus"><b>'+(p.tag||"Plan")+'.</b> '+p.focus+'</div>';
   if(p.rest){
-    h+='<div class="cardio"><div class="big">Rest day</div><p>'+p.focus+'</p></div>';
+    var pr=planFor(k);
+    h+='<div class="cardio"><div class="big">'+(pr?"Run day":"Rest day")+'</div><p>'+(pr?("No lifting today. "+esc(planLabel(pr))+" is on the plan."):p.focus)+'</p>'+
+      (pr?'<button class="btn ghost" data-go="run">Open Run →</button>':'')+'</div>';
   }else if(p.cardio){
     var e=dayEntry(k);
     h+='<div class="cardio"><div class="big">'+(e.done?"Logged":"Not logged yet")+'</div><p>'+p.note+'</p>'+
@@ -194,7 +208,7 @@ function drawTrainCard(){
     var tot=ex.reduce(function(a,x){return a+(x.target||0);},0);
     var got=ex.reduce(function(a,x){return a+Math.min(x.done||0,x.target||0);},0);
     var pct=tot?Math.round(got/tot*100):0, allDone=isDayDone(k,dow);
-    h+='<div class="bar'+(pct>=100?" full":"")+'"><span style="width:'+pct+'%"></span></div>'+
+    h+='<div class="bar'+(pct>=100?" full":"")+'"><span style="--p:'+(pct/100)+'"></span></div>'+
       '<div class="barlabel"><span>'+(s0.finished?"Workout finished":(pct>=100?"All sets done":"Sets logged"))+'</span><span class="num">'+ex.length+' ex &middot; '+got+' / '+tot+' sets</span></div><ul class="ex">';
     ex.forEach(function(x,i){var n=x.target||0,c=x.done||0;
       h+='<li'+(c>=n?' data-complete="1"':'')+'><div class="exname">'+esc(x.name)+'<small>'+esc(x.scheme||"")+'</small></div><div class="sets">';
@@ -340,30 +354,26 @@ function appleRuns(){
   return out;
 }
 function drawRuns(){
-  // Manual runs (deletable) + Apple Health runs (auto, read-only), newest first.
+  // Manual runs (deletable) + auto runs (Strava when connected, else Apple Health; read-only), newest first.
   var manual=db.runs.map(function(x,i){return {mi:x.mi,t:x.t,d:x.d,idx:i,src:"manual"};});
-  var auto=appleRuns().filter(function(a){
-    // skip an Apple run that duplicates a manual one on the same day (±0.3 mi)
+  var auto=(STRAVA.connected?STRAVA.acts.filter(isRunAct).map(function(a){return {mi:a.mi,min:a.min,d:a.date,src:"strava"};}):appleRuns()).filter(function(a){
+    // skip an auto run that duplicates a manual one on the same day (±0.3 mi)
     return !manual.some(function(mm){return mm.d===a.d && Math.abs(mm.mi-a.mi)<0.3;});
   });
   var all=manual.concat(auto).sort(function(a,b){return a.d<b.d?1:a.d>b.d?-1:0;}).slice(0,8);
   document.getElementById("rEmpty").style.display=all.length?"none":"block";
   document.getElementById("rBody").innerHTML=all.map(function(x){
     var tstr, pc;
-    if(x.src==="apple"){
+    if(x.src!=="manual"){
       var mm=Math.round(x.min);
       tstr=(mm>=60?(Math.floor(mm/60)+"h"+(mm%60)+"m"):(mm+" min"));
       if(x.min&&x.mi){var sec=(x.min*60)/x.mi;pc=Math.floor(sec/60)+":"+String(Math.round(sec%60)).padStart(2,"0");}else{pc="—";}
     } else { tstr=x.t; pc=pace(x.mi,x.t); }
-    var last=x.src==="apple"
-      ? '<td class="n"><span class="wtag">⌚</span></td>'
+    var last=x.src!=="manual"
+      ? '<td class="n"><span class="wtag" title="'+(x.src==="strava"?"Strava":"Apple Health")+'">⌚</span></td>'
       : '<td class="n"><button class="xdel" data-del-run="'+x.idx+'" aria-label="Delete">×</button></td>';
     return "<tr><td>"+x.mi.toFixed(1)+" mi</td><td class='n'>"+esc(tstr)+"</td><td class='n'>"+pc+"</td><td class='n'>"+x.d.slice(5)+"</td>"+last+"</tr>";
   }).join("");
-  var races=[["Peachtree Road Race 10K","Done · 1:11",1],["PNC Atlanta 10 Miler","Fall 2026",0],["Thanksgiving Half Marathon","Nov 2026",0]];
-  document.getElementById("races").innerHTML='<div style="display:flex;flex-direction:column;gap:9px">'+races.map(function(r,i){
-    return '<div class="race" data-done="'+r[2]+'" style="display:flex;align-items:center;gap:11px;font-size:13px"><span class="medal" style="width:22px;height:22px;border-radius:50%;flex:none;border:1.5px solid var(--gold-dim);color:var(--gold-dim);display:flex;align-items:center;justify-content:center;font-size:10px;font-family:var(--mono);'+(r[2]?'background:var(--gold);border-color:var(--gold);color:#17161A':'')+'">'+(r[2]?"✓":(i+1))+'</span><div>'+r[0]+'<small style="display:block;color:var(--muted);font-size:11px">'+r[1]+'</small></div></div>';
-  }).join("")+'</div>';
 }
 
 /* ---------- BODY: weight trend + waist ---------- */
@@ -443,7 +453,7 @@ function drawFood(){
   function ring(cls,val,tgt,unit,label){
     var pct=Math.min(100,Math.round(val/tgt*100));
     return '<div class="ring '+cls+'"'+(val>tgt?' data-over="1"':'')+'><div class="rv num">'+Math.round(val)+'</div>'+
-      '<div class="rt">/ '+tgt+' '+unit+'</div><div class="rk">'+label+'</div><div class="mbar"><span style="width:'+pct+'%"></span></div></div>';
+      '<div class="rt">/ '+tgt+' '+unit+'</div><div class="rk">'+label+'</div><div class="mbar"><span style="--p:'+(pct/100)+'"></span></div></div>';
   }
   var netCarbs=!!db.settings.netCarbs;
   var carbVal=netCarbs?Math.max(0,tot.c-tot.fib):tot.c;
@@ -776,6 +786,7 @@ document.getElementById("syncDot").addEventListener("click",function(){
   document.getElementById("cfgUrl").value=cfg.url||"https://the-platform-api.jozuna.workers.dev";
   document.getElementById("cfgTok").value=cfg.tok||"";
   document.getElementById("cfgStatus").textContent=cfg.url&&cfg.tok?"Connected.":"Not connected yet.";
+  drawStravaSettings();
   openModal("setModal");
 });
 document.getElementById("cfgSave").addEventListener("click",function(){
@@ -786,7 +797,7 @@ document.getElementById("cfgSave").addEventListener("click",function(){
    .then(function(r){ if(r.status===401){st.textContent="Token rejected — check it.";setSync("off");return;}
      if(!r.ok)throw new Error(r.status);
      st.textContent="Connected ✓ pulling your data…";
-     pullHealth();
+     pullHealth(); pullStrava(false,drawStravaSettings);
      pull(function(){renderAll();updateFoot();setTimeout(function(){closeModal("setModal");},700);});})
    .catch(function(){st.textContent="Couldn't reach the backend.";setSync("off");});
 });
@@ -1002,7 +1013,202 @@ document.getElementById("digestBtn").addEventListener("click",function(){
    .catch(function(){body.textContent="Couldn't reach the coach. Try again.";});
 });
 
+/* ---------- RUN: races, the 10-week Half plan, Strava, coach card ---------- */
+var RACES=[
+  {d:"2026-07-04",name:"Peachtree Road Race 10K",where:"Atlanta",done:true,result:"1:11"},
+  {d:"2026-10-18",name:"Miche 5K",where:"Piedmont Park",dist:"5K"},
+  {d:"2026-10-24",name:"PNC Atlanta 10 Miler",where:"Atlantic Station",dist:"10 mi"},
+  {d:"2026-10-31",name:"Día de Muertos 5K",where:"Plaza Fiesta · Chamblee",dist:"5K"},
+  {d:"2026-11-26",name:"Thanksgiving Half Marathon",where:"Center Parc Stadium",dist:"13.1 mi",goal:true}
+];
+var PLAN_START="2026-09-21", PLAN_WEEKS=10;
+// [date, type, planned mi, note] · Mon easy · Thu quality · Sat long · (Sun legs + Wed soccer stay as they are)
+var RUN_PLAN=[
+  ["2026-09-21","easy",3],["2026-09-24","easy",3,"finish with 4 × 20s strides"],["2026-09-26","long",4],
+  ["2026-09-28","easy",3],["2026-10-01","tempo",3,"middle 10 min comfortably hard"],["2026-10-03","long",5],
+  ["2026-10-05","easy",3],["2026-10-08","easy",4],["2026-10-10","long",6],
+  ["2026-10-12","easy",3],["2026-10-15","tempo",4,"2 × 8 min comfortably hard"],["2026-10-17","long",5,"easy, you race tomorrow"],["2026-10-18","race",3.1,"Miche 5K"],
+  ["2026-10-19","easy",3],["2026-10-22","easy",3],["2026-10-24","race",10,"PNC Atlanta 10 Miler = this week's long run"],
+  ["2026-10-26","easy",3],["2026-10-29","tempo",4,"3 × 6 min comfortably hard"],["2026-10-31","race",7,"Día de Muertos 5K, then 4 easy miles"],
+  ["2026-11-02","easy",4],["2026-11-05","easy",4],["2026-11-07","long",9],
+  ["2026-11-09","easy",4],["2026-11-12","tempo",5,"20 min comfortably hard"],["2026-11-14","long",11,"peak long run"],
+  ["2026-11-16","easy",3],["2026-11-19","easy",4],["2026-11-21","long",7,"taper"],
+  ["2026-11-23","easy",3],["2026-11-24","shake",2,"shakeout"],["2026-11-26","race",13.1,"Thanksgiving Half"]
+].map(function(r){return {d:r[0],type:r[1],mi:r[2],note:r[3]||""};});
+var PLAN_BY={}; RUN_PLAN.forEach(function(p){PLAN_BY[p.d]=p;});
+var RUN_TYPE={easy:{n:"Easy",pace:"conversational · ~11:30–12:30/mi"},tempo:{n:"Tempo",pace:"comfortably hard in the work · ~10:00–10:30/mi"},long:{n:"Long run",pace:"easy pace · slower is fine"},race:{n:"Race",pace:"run it, enjoy it"},shake:{n:"Shakeout",pace:"very easy"}};
+function planFor(k){return PLAN_BY[k]||null;}
+function planLabel(p){return p.type==="race"?(p.note||"Race"):(RUN_TYPE[p.type].n+" "+p.mi+" mi");}
+function planShort(p){return p.type==="race"?"Race":p.type==="long"?"Long "+p.mi:p.type==="tempo"?"Tempo "+p.mi:p.type==="shake"?"Shake":"Easy "+p.mi;}
+function railLabel(k,dow){var p=planFor(k); if(p&&PROGRAM[dow].rest)return p.type==="long"?"Long":p.type==="race"?"Race":"Run"; return SHORT[dow];}
+function planWeekIndex(d){var s=new Date(PLAN_START+"T12:00:00"),x=new Date(d||TODAY);x.setHours(12,0,0,0);return Math.floor((x-s)/(7*86400000))+1;} // <1 = before the plan
+function planPhase(w){return w<1?"Pre-season":w<=3?"Base":w<=6?"Race tune-ups":w<=8?"Peak":w<=9?"Taper":"Race week";}
+function daysUntil(k){var a=new Date(iso(TODAY)+"T12:00:00"),b=new Date(k+"T12:00:00");return Math.round((b-a)/86400000);}
+function weekStartMon(d){var x=new Date(d);x.setHours(0,0,0,0);x.setDate(x.getDate()-((x.getDay()+6)%7));return x;}
+function niceDate(k,o){return new Date(k+"T12:00:00").toLocaleDateString(undefined,o||{weekday:"short",month:"short",day:"numeric"});}
+
+/* Strava: read-only mirror of the backend cache (tokens never reach the phone; nothing here is written to db) */
+var STRAVA={acts:[],fetchedAt:0,connected:null,athlete:null};
+function actType(a){return String(a.type||"").toLowerCase();}
+function isGlitch(a){return a.paceSec!=null&&(a.paceSec<300||a.paceSec>1200);} // GPS junk: faster than 5:00 or slower than 20:00/mi
+function isRunAct(a){var t=actType(a);return (t==="run"||t==="trailrun"||t==="virtualrun")&&!isGlitch(a)&&a.mi>=0.5;}
+function isTrainAct(a){var t=actType(a);return !(t==="walk"||(t==="hike"&&a.mi<2));}
+function runsOn(k){return STRAVA.acts.filter(function(a){return a.date===k&&isRunAct(a);});}
+function planDone(p){var rs=runsOn(p.d);if(!rs.length)return null;var mi=rs.reduce(function(s,a){return s+a.mi;},0);if(p.type==="race"||mi>=p.mi*0.7)return {mi:Math.round(mi*100)/100,runs:rs};return null;}
+function fmtPace(sec){if(!sec)return "—";return Math.floor(sec/60)+":"+String(Math.round(sec%60)).padStart(2,"0");}
+function fmtMin(min){var m=Math.round(min);return m>=60?(Math.floor(m/60)+"h "+(m%60)+"m"):(m+" min");}
+function weekMiles(n){var out=[],ws=weekStartMon(TODAY);
+  for(var i=n-1;i>=0;i--){var s=new Date(ws);s.setDate(s.getDate()-7*i);var e=new Date(s);e.setDate(e.getDate()+7);var mi=0,runs=0;
+    STRAVA.acts.forEach(function(a){if(!isRunAct(a))return;var d=new Date(a.date+"T12:00:00");if(d>=s&&d<e){mi+=a.mi;runs++;}});
+    out.push({start:iso(s),mi:Math.round(mi*10)/10,runs:runs});}
+  return out;}
+function trainStreak(){var days={};STRAVA.acts.forEach(function(a){if(isTrainAct(a))days[a.date]=1;});
+  var n=0,d=new Date(TODAY);if(!days[iso(d)])d.setDate(d.getDate()-1);while(days[iso(d)]){n++;d.setDate(d.getDate()-1);}return n;}
+function thisWeekPlan(){var ws=weekStartMon(TODAY),out=[];for(var i=0;i<7;i++){var d=new Date(ws);d.setDate(d.getDate()+i);var k=iso(d),p=planFor(k);out.push({k:k,dow:d.getDay(),p:p,done:p?planDone(p):null,runs:runsOn(k)});}return out;}
+
+function pullStrava(force,cb){
+  if(!cfg.url||!cfg.tok){ if(cb)cb(); return; }
+  fetch(cfg.url.replace(/\/$/,"")+"/strava/activities?days=70"+(force?"&force=1":""),{headers:{"Authorization":"Bearer "+cfg.tok}})
+   .then(function(r){return r.ok?r.json():null;})
+   .then(function(j){ if(!j){ if(cb)cb(); return; }
+     STRAVA.connected=!!j.connected; STRAVA.acts=j.acts||[]; STRAVA.fetchedAt=j.fetchedAt||Date.now(); STRAVA.athlete=j.athlete||null;
+     drawRun(); drawRuns(); drawHome(); coachToday(false); if(cb)cb(); })
+   .catch(function(){ if(cb)cb(); });
+}
+function stravaConnect(){
+  if(!cfg.url||!cfg.tok){toast("Connect cloud sync first (⤢)");return;}
+  fetch(cfg.url.replace(/\/$/,"")+"/strava/connect",{method:"POST",headers:{"Authorization":"Bearer "+cfg.tok}})
+   .then(function(r){return r.json();})
+   .then(function(j){ if(j&&j.url) location.href=j.url; else toast("Strava isn't set up on the backend yet"); })
+   .catch(function(){toast("Couldn't reach the backend");});
+}
+function stravaDisconnect(){
+  if(!confirm("Disconnect Strava? The plan will stop checking itself off."))return;
+  fetch(cfg.url.replace(/\/$/,"")+"/strava/disconnect",{method:"POST",headers:{"Authorization":"Bearer "+cfg.tok}})
+   .then(function(){ STRAVA={acts:[],fetchedAt:Date.now(),connected:false,athlete:null}; drawRun(); drawRuns(); drawStravaSettings(); toast("Strava disconnected"); })
+   .catch(function(){toast("Couldn't reach the backend");});
+}
+function drawStravaSettings(){
+  var st=document.getElementById("stravaStatus"),b=document.getElementById("stravaBtn"); if(!st||!b)return;
+  if(!cfg.url||!cfg.tok){ st.textContent="Connect cloud sync above first."; b.style.display="none"; return; }
+  b.style.display="";
+  if(STRAVA.connected){ st.textContent="Connected"+(STRAVA.athlete&&STRAVA.athlete.name?" as "+STRAVA.athlete.name:"")+" · "+STRAVA.acts.length+" activities in the last 70 days."; b.textContent="Disconnect Strava"; b.onclick=stravaDisconnect; }
+  else { st.textContent=STRAVA.connected===false?"Not connected. The plan won't auto-check until you connect.":"Checking…"; b.textContent="Connect Strava"; b.onclick=stravaConnect; }
+}
+
+/* daily feel check-in → the coach card + chat both read it */
+var MOODS=[["wrecked","😵","Wrecked"],["tired","😴","Tired"],["good","🙂","Good"],["great","🔥","Great"]];
+var FEEL_TAGS=["sore legs","slept bad","cramping","stressed"];
+function feelFor(k){return (db.feel||{})[k]||null;}
+function setFeel(mood,tags){var k=iso(TODAY);db.feel=db.feel||{};var f=db.feel[k]||{mood:null,tags:[]};if(mood)f.mood=mood;if(tags)f.tags=tags;f.ts=Date.now();db.feel[k]=f;save();drawRun();coachToday(true);}
+
+/* the one card he reads before training: cached per day, regenerated only when its inputs change */
+function todayKey(){var k=iso(TODAY),p=planFor(k),f=feelFor(k),d=p?planDone(p):null;
+  return [k,p?p.type+p.mi:"none",f?(f.mood||"")+"|"+(f.tags||[]).join(","):"",d?"done":"todo",trainStreak(),isDayDone(k,TODAY.getDay())?"lift":"",Math.round(dayTotals(k).cal/300)].join("#");}
+function todayPayload(){
+  var k=iso(TODAY),p=planFor(k),dow=TODAY.getDay(),pg=PROGRAM[dow],d=p?planDone(p):null,tot=dayTotals(k),hd=HEALTH[k]||{},m=hd.metrics||{};
+  var since=new Date(TODAY);since.setDate(since.getDate()-14);var sk=iso(since),wk=planWeekIndex();
+  return {
+    today:k, weekday:["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][dow], localTime:TODAY.getHours()+":"+String(TODAY.getMinutes()).padStart(2,"0"),
+    plannedRun:p?{type:p.type,mi:p.mi,label:planLabel(p),note:p.note,paceGuide:RUN_TYPE[p.type].pace,done:!!d,actual:d?d.runs.map(function(a){return a.mi+" mi @ "+fmtPace(a.paceSec)+(a.hr?" · HR "+a.hr:"");}):null}:null,
+    unplannedRunsToday:(!p&&runsOn(k).length)?runsOn(k).map(function(a){return a.mi+" mi @ "+fmtPace(a.paceSec);}):undefined,
+    lifting:{today:pg.rest?"Rest":pg.name,done:isDayDone(k,dow)},
+    feel:feelFor(k), consecutiveTrainingDays:trainStreak(),
+    planWeek:(wk>=1&&wk<=PLAN_WEEKS)?(wk+" of "+PLAN_WEEKS+" ("+planPhase(wk)+")"):(wk<1?"plan starts "+PLAN_START:"plan complete"),
+    thisWeek:thisWeekPlan().filter(function(x){return x.p;}).map(function(x){return x.k+" "+planLabel(x.p)+(x.done?" (done)":"");}),
+    weeklyMiles:weekMiles(5),
+    recentActivities:STRAVA.acts.filter(function(a){return a.date>=sk;}).map(function(a){return {date:a.date,type:a.type,mi:a.mi,min:a.min,pace:a.paceSec?fmtPace(a.paceSec):null,hr:a.hr,name:a.name,glitch:isGlitch(a)||undefined};}),
+    foodToday:{kcal:Math.round(tot.cal),protein:Math.round(tot.p),itemsLogged:foodFor(k).length},
+    health:{steps:m.steps!=null?Math.round(m.steps):null,moveKcal:m.move!=null?Math.round(m.move):null,workoutKcal:Math.round(hd.kcalToday||0)},
+    upcomingRaces:RACES.filter(function(r){return !r.done&&r.d>=k;}).map(function(r){return r.name+" · "+r.d+" · in "+daysUntil(r.d)+"d"+(r.goal?" (GOAL)":"");}),
+    memory:db.memory.slice(-12)
+  };
+}
+var todayBusy=false;
+function coachToday(force){
+  var k=iso(TODAY),key=todayKey(),c=(db.coachToday||{})[k];
+  if(!force&&c&&c.key===key){ renderTodayCoach(c); return; }
+  if(!cfg.url||!cfg.tok||!STRAVA.fetchedAt||todayBusy){ if(c)renderTodayCoach(c); return; }
+  todayBusy=true; renderTodayCoach(null);
+  fetch(cfg.url.replace(/\/$/,"")+"/ai/today",{method:"POST",headers:{"Authorization":"Bearer "+cfg.tok,"Content-Type":"application/json"},body:JSON.stringify(todayPayload())})
+   .then(function(r){return r.ok?r.json():null;})
+   .then(function(j){ todayBusy=false;
+     if(!j||!j.headline){ renderTodayCoach(c||{headline:"Coach is unavailable right now.",why:"",call:"go"}); return; }
+     db.coachToday=db.coachToday||{}; db.coachToday[k]={key:key,headline:j.headline,why:j.why||"",call:j.call||"go",ts:Date.now()};
+     var old=iso(new Date(TODAY.getTime()-7*86400000)); Object.keys(db.coachToday).forEach(function(d){if(d<old)delete db.coachToday[d];});
+     save(); renderTodayCoach(db.coachToday[k]); drawHome(); })
+   .catch(function(){ todayBusy=false; renderTodayCoach(c||{headline:"Couldn't reach the coach.",why:"",call:"go"}); });
+}
+function renderTodayCoach(c){
+  var el=document.getElementById("coachCard"); if(!el)return;
+  if(!c){ el.innerHTML='<div class="skel" style="height:18px;width:70%;margin-bottom:8px">&nbsp;</div><div class="skel" style="height:13px;width:95%">&nbsp;</div><div class="skel" style="height:13px;width:60%;margin-top:6px">&nbsp;</div>'; return; }
+  var tag={go:"Go",easy:"Take it easy",rest:"Rest",swap:"Change of plan",race:"Race day",done:"Logged"}[c.call]||"Go";
+  el.innerHTML='<div class="ccall" data-call="'+esc(c.call)+'">'+tag+'</div><div class="chead">'+esc(c.headline)+'</div>'+(c.why?'<div class="cwhy">'+esc(c.why)+'</div>':'');
+}
+
+var runSel=null; // day selected in the plan rail (iso); null = today
+function drawRun(){
+  var box=document.getElementById("runBody"); if(!box)return;
+  var k=iso(TODAY),p=planFor(k),d=p?planDone(p):null,wk=planWeekIndex(),conn=STRAVA.connected;
+  var goal=RACES.filter(function(r){return r.goal;})[0],next=RACES.filter(function(r){return !r.done&&r.d>=k;})[0];
+  // race strip + plan progress
+  var pct=Math.max(0,Math.min(100,Math.round(((wk-1)/PLAN_WEEKS)*100)));
+  var strip='<div class="racestrip">'+RACES.filter(function(r){return !r.done;}).map(function(r){var du=daysUntil(r.d);
+    return '<div class="racechip'+(r.goal?" goal":"")+(r===next?" next":"")+'"><div class="rc-n">'+(r.goal?"🏁 ":"")+esc(r.name)+'</div><div class="rc-d">'+niceDate(r.d)+' · <b>'+(du===0?"today":du<0?"done":"in "+du+"d")+'</b></div></div>';}).join("")+'</div>';
+  var prog='<div class="planprog"><div class="pp-l"><span>'+(wk<1?"Plan starts Mon Sep 21":wk>PLAN_WEEKS?"Plan complete":"Week "+wk+" of "+PLAN_WEEKS+" · "+planPhase(wk))+'</span><span class="num">'+daysUntil(goal.d)+'d to the Half</span></div><div class="bar" style="margin:8px 0 0"><span style="--p:'+(pct/100)+'"></span></div></div>';
+  // today card
+  var dow=TODAY.getDay(),pg=PROGRAM[dow];
+  var title=p?planLabel(p):"No run today";
+  var sub=p?(RUN_TYPE[p.type].pace+(p.note&&p.type!=="race"?" · "+p.note:"")):(pg.rest?"Nothing on the plan. Recover.":(pg.name+" day. Legs today, miles another day."));
+  var status;
+  if(d){var a=d.runs[0];status='<div class="runstat done"><span class="chk pop">✓</span><div><b>Done</b> · '+d.mi.toFixed(2)+' mi @ '+fmtPace(a.paceSec)+(a.hr?' · ♥ '+a.hr:'')+'<small>from Strava · '+esc(a.name)+'</small></div></div>';}
+  else if(p){status='<div class="runstat"><span class="chk"></span><div><b>Planned</b> · '+p.mi+' mi<small>'+(conn===false?"connect Strava to auto-check":"checks itself off when Strava sees it")+'</small></div></div>';}
+  else {var rs=runsOn(k);status=rs.length?'<div class="runstat done"><span class="chk pop">✓</span><div><b>Bonus run</b> · '+rs[0].mi.toFixed(2)+' mi @ '+fmtPace(rs[0].paceSec)+'<small>not on the plan · counted anyway</small></div></div>':'';}
+  var f=feelFor(k);
+  var feel='<div class="feelrow"><div class="eyebrow" style="margin-bottom:8px">How do you feel today?</div><div class="moods">'+MOODS.map(function(m){return '<button class="mood'+(f&&f.mood===m[0]?" on":"")+'" data-mood="'+m[0]+'"><span>'+m[1]+'</span>'+m[2]+'</button>';}).join("")+'</div>'+
+    '<div class="ftags">'+FEEL_TAGS.map(function(t){var on=f&&(f.tags||[]).indexOf(t)>=0;return '<button class="ftag'+(on?" on":"")+'" data-tag="'+esc(t)+'">'+esc(t)+'</button>';}).join("")+'</div></div>';
+  var today='<article class="card runcard"><div class="head"><h2>'+esc(title)+'</h2><span class="date">Today · '+TODAY.toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"})+'</span></div>'+
+    '<div class="focus">'+esc(sub)+'</div>'+status+'<div id="coachCard" class="coachcard"></div>'+feel+'</article>';
+  // this week (Mon–Sun) + selected-day detail
+  var wkp=thisWeekPlan(),sel=runSel||k;
+  var rail='<div class="runrail">'+wkp.map(function(x){var lab=x.p?planShort(x.p):(PROGRAM[x.dow].rest?"":PROGRAM[x.dow].name);
+    return '<button class="rday'+(x.p?" plan":"")+(x.done?" done":"")+(x.k===k?" today":"")+(x.k===sel?" sel":"")+(x.p&&x.p.type==="race"?" race":"")+'" data-rday="'+x.k+'"><span class="dl">'+LET[x.dow]+'</span><span class="dn num">'+(+x.k.slice(8))+'</span><span class="dt">'+esc(lab||"–")+'</span>'+(x.done?'<span class="rdot"></span>':'')+'</button>';}).join("")+'</div>';
+  var sd=wkp.filter(function(x){return x.k===sel;})[0]||wkp[0];
+  var detail='<div class="rdetail">'+(sd.p?('<b>'+esc(planLabel(sd.p))+'</b> · '+esc(RUN_TYPE[sd.p.type].pace)+(sd.p.note&&sd.p.type!=="race"?'<br><span style="color:var(--muted)">'+esc(sd.p.note)+'</span>':'')):('<b>'+(PROGRAM[sd.dow].rest?"No run":PROGRAM[sd.dow].name+" day")+'</b> · <span style="color:var(--muted)">'+esc(PROGRAM[sd.dow].focus)+'</span>'))+
+    (sd.runs.length?'<div style="margin-top:7px">'+sd.runs.map(function(a){return '<span class="pill">✓ '+a.mi.toFixed(1)+' mi @ '+fmtPace(a.paceSec)+'</span>';}).join(" ")+'</div>':'')+'</div>';
+  // weekly mileage (8 weeks, Mon-start)
+  var wm=weekMiles(8),mx=Math.max(1,Math.max.apply(null,wm.map(function(w){return w.mi;}))),thisW=wm[wm.length-1],lastW=wm[wm.length-2];
+  var bars='<section class="panel"><h3>Weekly miles</h3><div class="wkbars">'+wm.map(function(w,i){return '<div class="wkb'+(i===wm.length-1?" cur":"")+'"><div class="wkfill" style="--h:'+(w.mi/mx)+'"></div><span class="wkl">'+w.start.slice(5).replace("-","/")+'</span></div>';}).join("")+'</div>'+
+    '<div class="wkline"><span><b class="num">'+thisW.mi+'</b> mi this week · '+thisW.runs+' run'+(thisW.runs===1?"":"s")+'</span><span style="color:var(--muted)">last week '+lastW.mi+'</span></div></section>';
+  // recent runs from Strava (+ what else he did this week)
+  var recent=STRAVA.acts.filter(isRunAct).slice(0,8);
+  var other=(function(){var ws=iso(weekStartMon(TODAY)),c={};STRAVA.acts.forEach(function(a){if(a.date<ws||isRunAct(a)||!isTrainAct(a))return;c[a.type]=(c[a.type]||0)+1;});
+    return Object.keys(c).map(function(t){return c[t]+" "+t.replace(/([a-z])([A-Z])/g,"$1 $2").toLowerCase();}).join(" · ");})();
+  var rec='<section class="panel"><h3>Recent runs · Strava</h3>'+(recent.length?'<div class="runlist">'+recent.map(function(a){return '<div class="runrow"><div class="rr-l"><b>'+a.mi.toFixed(2)+' mi</b><small>'+esc(a.name)+' · '+niceDate(a.date)+'</small></div><div class="rr-r num">'+fmtPace(a.paceSec)+'<small>'+fmtMin(a.min)+(a.hr?' · ♥ '+a.hr:'')+'</small></div></div>';}).join("")+'</div>'
+    :(conn===null?'<div class="skel" style="height:44px;margin-bottom:8px">&nbsp;</div><div class="skel" style="height:44px">&nbsp;</div>':'<div class="empty">'+(conn===false?"Connect Strava (⤢ settings) to pull your runs.":"No runs in the last 70 days.")+'</div>'))+
+    (other?'<div class="empty" style="padding-top:10px">Also this week: '+esc(other)+'</div>':'')+'</section>';
+  // full plan, grouped by week
+  var byWeek={};RUN_PLAN.forEach(function(q){var w=planWeekIndex(new Date(q.d+"T12:00:00"));(byWeek[w]=byWeek[w]||[]).push(q);});
+  var doneN=RUN_PLAN.filter(function(q){return planDone(q);}).length;
+  var plan='<details class="panel planfull"'+(wk>=1&&wk<=PLAN_WEEKS?"":" open")+'><summary><h3 style="margin:0;display:inline">Full plan · 10 weeks</h3><span class="sum-r">'+doneN+' / '+RUN_PLAN.length+' done</span></summary>'+
+    Object.keys(byWeek).map(function(w){return '<div class="pw'+(+w===wk?" cur":"")+'"><div class="pw-h">Week '+w+' <span>'+planPhase(+w)+'</span></div>'+byWeek[w].map(function(q){var dn=planDone(q);
+      return '<div class="pw-r'+(dn?" done":"")+(q.d===k?" today":"")+'"><span class="chk">'+(dn?"✓":"")+'</span><span class="pw-d">'+niceDate(q.d,{weekday:"short",month:"numeric",day:"numeric"})+'</span><span class="pw-l">'+esc(planLabel(q))+'</span>'+(dn?'<span class="pw-a num">'+dn.mi.toFixed(1)+' mi</span>':'')+'</div>';}).join("")+'</div>';}).join("")+'</details>';
+  var connect=conn===false?'<article class="card" style="border-left-color:#FC4C02"><div class="head"><h2>Connect Strava</h2></div><p style="font-size:13px;color:var(--muted);margin:10px 0 14px">Your watch already logs every run to Strava. Connect once and the plan checks itself off, the coach sees your real paces, and nothing gets typed twice.</p><button class="btn full" id="stravaConnectBtn" style="background:#FC4C02;border-color:#FC4C02;color:#fff">Connect Strava</button></article>':'';
+  box.innerHTML=strip+prog+today+rail+detail+bars+rec+plan+connect;
+  Array.prototype.forEach.call(box.querySelectorAll(".mood"),function(b){b.addEventListener("click",function(){setFeel(b.dataset.mood,null);});});
+  Array.prototype.forEach.call(box.querySelectorAll(".ftag"),function(b){b.addEventListener("click",function(){var cur=feelFor(k)||{tags:[]};var t=(cur.tags||[]).slice();var i=t.indexOf(b.dataset.tag);if(i>=0)t.splice(i,1);else t.push(b.dataset.tag);setFeel(null,t);});});
+  Array.prototype.forEach.call(box.querySelectorAll(".rday"),function(b){b.addEventListener("click",function(){runSel=b.dataset.rday;drawRun();});});
+  var cb=document.getElementById("stravaConnectBtn"); if(cb)cb.addEventListener("click",stravaConnect);
+  var c=(db.coachToday||{})[k]; if(c)renderTodayCoach(c); else if(!STRAVA.fetchedAt)renderTodayCoach(null); else coachToday(false);
+}
+
 /* ---------- HOME dashboard ---------- */
+var _heroLast=null;
+function countUp(el,from,to){
+  if(!el)return; if(from===null||from===to||matchMedia("(prefers-reduced-motion: reduce)").matches){el.textContent=to;return;}
+  var t0=performance.now(),dur=450;
+  (function step(t){var q=Math.min(1,(t-t0)/dur);q=1-Math.pow(1-q,3);el.textContent=Math.round(from+(to-from)*q);if(q<1)requestAnimationFrame(step);})(t0);
+}
 function drawHome(){
   var box=document.getElementById("homeBody"); if(!box) return;
   var k=iso(TODAY), tg=targets(k), tot=dayTotals(k);
@@ -1012,11 +1218,16 @@ function drawHome(){
   var over=remain<0;
   // today's workout
   var dow=TODAY.getDay(), p=PROGRAM[dow], woV;
-  if(p.rest){ woV="Rest day"; }
+  if(p.rest){ woV="Rest from lifting"; }
   else if(p.cardio){ var e=db.log[k]; woV=p.name+(e&&e.done?" · done ✓":" · not logged"); }
   else { var s=session(k,dow), dn=s.exercises.reduce(function(a,x){return a+Math.min(x.done||0,x.target||0);},0),
         tt=s.exercises.reduce(function(a,x){return a+(x.target||0);},0);
         woV=p.name+" · "+dn+"/"+tt+" sets"+(isDayDone(k,dow)?" ✓":""); }
+  // today's run (plan + Strava + coach card)
+  var rp=planFor(k), rd=rp?planDone(rp):null, bonus=(!rp&&runsOn(k).length)?runsOn(k)[0]:null;
+  var rV=rp?(planLabel(rp)+(rd?" · done ✓ "+fmtPace(rd.runs[0].paceSec):" · planned")):(bonus?("Bonus run · "+bonus.mi.toFixed(1)+" mi @ "+fmtPace(bonus.paceSec)):"No run on the plan");
+  var cc=(db.coachToday||{})[k];
+  var goal=RACES.filter(function(r){return r.goal;})[0];
   // weight
   var w=db.weights.slice().sort(function(a,b){return a.d<b.d?-1:1;}), cur=w.length?w[w.length-1].v:null;
   var wV=cur!==null?(cur.toFixed(1)+" lb · goal 195"):"No weigh-in yet";
@@ -1026,27 +1237,25 @@ function drawHome(){
   if(m.move!=null)hStats.push(Math.round(m.move)+" move");
   if(burned)hStats.push(burned+" workout cal");
   var greeting=(TODAY.getHours()<12?"Good morning":TODAY.getHours()<18?"Good afternoon":"Good evening");
-  function card(view,ic,t,v){return '<button class="homecard" data-go="'+view+'"><span class="hc-ic">'+ic+'</span><span class="hc-main"><span class="hc-t">'+t+'</span><span class="hc-v">'+esc(v)+'</span></span><span class="hc-arrow">›</span></button>';}
+  function card(view,ic,t,v,sub){return '<button class="homecard" data-go="'+view+'"><span class="hc-ic">'+ic+'</span><span class="hc-main"><span class="hc-t">'+t+'</span><span class="hc-v">'+esc(v)+(sub?'<small style="display:block;color:var(--muted);font-size:12px;margin-top:2px">'+esc(sub)+'</small>':'')+'</span></span><span class="hc-arrow">›</span></button>';}
   box.innerHTML=
     // top block: greeting + hero calories
     '<div class="homeTop">'+
-      '<div style="margin:6px 0 12px;color:var(--muted);font-size:13px">'+greeting+', John.'+(streak>=2?' <b style="color:var(--gold)">🔥 '+streak+"-day streak</b>":"")+'</div>'+
+      '<div style="margin:6px 0 12px;color:var(--muted);font-size:13px">'+greeting+', John.'+(streak>=2?' <b style="color:var(--gold)">🔥 '+streak+"-day streak</b>":"")+' <span style="white-space:nowrap">· 🏁 Half in <b class="num" style="color:var(--text)">'+daysUntil(goal.d)+'</b>d</span></div>'+
       '<button class="hero-cal" data-go="food" style="display:block;width:100%;border-width:1px 1px 1px 3px;cursor:pointer;margin-bottom:0">'+
-        '<div class="big'+(over?" over":"")+'">'+(over?"+"+Math.abs(remain):remain)+'</div>'+
+        '<div class="big'+(over?" over":"")+'">'+(over?"+":"")+'<span class="cu">'+Math.abs(remain)+'</span></div>'+
         '<div class="cap">'+(over?"calories over":"calories left")+'</div>'+
         '<div class="sub"><b>'+Math.round(tot.cal)+'</b> / '+calTarget+' kcal &nbsp;·&nbsp; protein <b>'+Math.round(tot.p)+'</b>/'+tg.p+'g'+(pRemain>0?" ("+pRemain+" to go)":" ✓")+'</div>'+
       '</button>'+
     '</div>'+
     // bottom block: quick cards, anchored above the tab bar
     '<div class="homeBottom">'+
+      card("run","🏃","Today's run",rV,cc?cc.headline:null)+
       card("train","🏋️","Today's workout",woV)+
-      card("body","📊","Bodyweight",wV)+
-      card("food","🍽️","Eaten today",Math.round(tot.cal)+" kcal · "+Math.round(tot.p)+"g P · "+foodFor(k).length+" items")+
+      '<div class="homerow">'+card("body","📊","Bodyweight",wV)+card("food","🍽️","Eaten today",Math.round(tot.cal)+" kcal · "+Math.round(tot.p)+"g P")+'</div>'+
       (hStats.length?card("body","⌚","Apple Health",hStats.join(" · ")):"")+
     '</div>';
-  Array.prototype.forEach.call(box.querySelectorAll(".homecard,.hero-cal"),function(b){
-    b.addEventListener("click",function(){var v=b.dataset.go;var t=document.querySelector('.tab[data-view="'+v+'"]');if(t)t.click();});
-  });
+  var val=Math.abs(remain); countUp(box.querySelector(".hero-cal .cu"),_heroLast,val); _heroLast=val;
 }
 /* ---- Native shell: Apple Health device-sync panel (only inside the iOS app) ---- */
 function nhSend(action){ try{ if(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.platformHealth){ window.webkit.messageHandlers.platformHealth.postMessage({action:action}); } }catch(e){} }
@@ -1074,15 +1283,21 @@ function drawNativeHealth(){
   wire("nhResync","resync"); wire("nhReconnect","reconnect"); wire("nhSettings","openSettings");
   if(window.__isNativeApp){ drawNativeHealth(); nhSend("status"); }
 })();
-function renderAll(){drawHome();drawRail();drawTrainCard();drawLifts();drawRuns();drawWeight();drawFood();drawHealthStats();drawNativeHealth();drawTargets();drawRecipes();updateFoot();}
+function renderAll(){drawHome();drawRail();drawTrainCard();drawLifts();drawRuns();drawRun();drawWeight();drawFood();drawHealthStats();drawNativeHealth();drawTargets();drawRecipes();updateFoot();}
 drawDateBar();
 renderAll();
 setSync(cfg.url&&cfg.tok?"ok":"");
-if(cfg.url&&cfg.tok){ pull(function(){renderAll();}); pullHealth(); }
+if(cfg.url&&cfg.tok){ pull(function(){renderAll();coachToday(false);}); pullHealth(); pullStrava(false); }
 // keep Apple Health fresh: on foreground, on Food tab, and every 60s
-document.addEventListener("visibilitychange",function(){if(!document.hidden)pullHealth();});
+document.addEventListener("visibilitychange",function(){if(!document.hidden){pullHealth();pullStrava(false);}});
 var foodTab=document.querySelector('.tab[data-view="food"]'); if(foodTab)foodTab.addEventListener("click",pullHealth);
 setInterval(pullHealth,60000);
+setInterval(function(){pullStrava(false);},5*60000);
+// back from Strava's Authorize screen (/strava/callback bounces here with ?strava=connected|error)
+(function(){ try{ var sp=new URLSearchParams(location.search), s=sp.get("strava"); if(!s)return;
+  history.replaceState({},"",location.pathname);
+  if(s==="connected"){ toast("Strava connected ✓"); var t=document.querySelector('.tab[data-view="run"]'); if(t)t.click(); pullStrava(true); }
+  else toast("Strava connection failed. Try again from ⤢ settings."); }catch(e){} })();
 
 /* ---------- AI Coach (available on every tab) ---------- */
 function mdlite(s){ return String(s)
@@ -1125,10 +1340,28 @@ function coachContext(){
     recentWeights:w.slice(-5).map(function(x){return x.d+": "+x.v+"lb";}),
     recentLifts:db.lifts.slice(-5).map(function(x){return x.lift+" "+x.wt+"x"+x.reps;}),
     todayWorkouts:(hd.workouts||[]).map(function(x){return x.type+" "+x.kcal+"kcal";}),
-    loggingStreak:foodStreak()
+    loggingStreak:foodStreak(),
+    running:(function(){
+      var rp=planFor(k), rd=rp?planDone(rp):null, wk=planWeekIndex();
+      var since=new Date(TODAY); since.setDate(since.getDate()-14); var sk=iso(since);
+      return {
+        stravaConnected:STRAVA.connected,
+        goalRace:"Invesco QQQ Thanksgiving Half Marathon, Thu 2026-11-26 (2025 result 2:40:50, 11:11/mi). Goal: finish strong, not a PR.",
+        planWeek:(wk>=1&&wk<=PLAN_WEEKS)?(wk+" of "+PLAN_WEEKS+" ("+planPhase(wk)+")"):(wk<1?"plan starts "+PLAN_START:"plan complete"),
+        planShape:"3 runs/week: Mon easy, Thu quality (tempo/strides), Sat long. Sun legs + Wed soccer unchanged. Long run 4,5,6,5,(PNC 10mi),7,9,11 peak, 7 taper, race.",
+        thisWeek:thisWeekPlan().filter(function(x){return x.p;}).map(function(x){return x.k+" "+planLabel(x.p)+(x.done?" (done "+x.done.mi+" mi)":"");}),
+        todayPlanned:rp?planLabel(rp)+(rp.note?" ("+rp.note+")":""):null,
+        todayDone:rd?rd.runs.map(function(a){return a.mi+" mi @ "+fmtPace(a.paceSec)+(a.hr?" HR "+a.hr:"");}):null,
+        feelToday:feelFor(k),
+        consecutiveTrainingDays:trainStreak(),
+        weeklyMiles:weekMiles(6),
+        recentActivities:STRAVA.acts.filter(function(a){return a.date>=sk;}).map(function(a){return a.date+" "+a.type+" "+(a.mi?a.mi+"mi ":"")+Math.round(a.min)+"min"+(a.paceSec?" @"+fmtPace(a.paceSec):"")+(a.hr?" HR"+a.hr:"")+(isGlitch(a)?" (GPS glitch, ignore)":"");}),
+        upcomingRaces:RACES.filter(function(r){return !r.done&&r.d>=k;}).map(function(r){return r.name+" "+r.d+" (in "+daysUntil(r.d)+"d)"+(r.goal?" GOAL":"");})
+      };
+    })()
   };
 }
-var COACH_CHIPS=["How much protein do I have left?","What should I eat for dinner?","How's my week going?","Am I on track for my cut?","What's my workout today?"];
+var COACH_CHIPS=["Should I run today?","How's my running week looking?","How much protein do I have left?","What's my workout today?","Am I overdoing it?","What should I eat for dinner?"];
 function coachRender(){
   var box=document.getElementById("coachMsgs");
   if(!db.chat.length){
@@ -1171,6 +1404,7 @@ function coachApply(a){
   if(a.tool==="log_weight"){ var lb=+a.input.lb; if(!lb)return null; db.weights=db.weights.filter(function(x){return x.d!==k;}); db.weights.push({d:k,v:lb}); drawWeight(); return "✓ Logged weight "+lb+" lb"; }
   if(a.tool==="log_lift"){ var i=a.input; if(!i.lift)return null; db.lifts.push({lift:i.lift,wt:+i.wt||0,reps:+i.reps||0,d:k}); drawLifts(); return "✓ Logged "+i.lift+" "+(+i.wt||0)+"×"+(+i.reps||0); }
   if(a.tool==="remember"){ var n=(a.input.note||"").trim(); if(!n)return null; if(db.memory.indexOf(n)<0)db.memory.push(n); return "🧠 Saved to memory: "+n; }
+  if(a.tool==="log_feel"){ var md=String(a.input.mood||"").toLowerCase(); if(!MOODS.some(function(m){return m[0]===md;}))return null; var tg=(a.input.tags||[]).map(String).slice(0,6); db.feel=db.feel||{}; db.feel[k]={mood:md,tags:tg,ts:Date.now()}; drawRun(); setTimeout(function(){coachToday(true);},50); return "🏃 Logged how you feel: "+md+(tg.length?" · "+tg.join(", "):""); }
   return null;
 }
 var coachBusy=false;
@@ -1204,10 +1438,10 @@ document.getElementById("coachTone").addEventListener("click",function(){db.sett
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=24").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=33").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=32; // bump this + version.json + ?v= on every release
+var APPVER=33; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})

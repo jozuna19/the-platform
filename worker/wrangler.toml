@@ -13,7 +13,14 @@ id = "a691e592db894c0f83a4a4057febbe7a"
 ALLOWED_ORIGIN = "https://jozuna19.github.io"
 # Model used to parse natural-language food entries.
 AI_MODEL = "claude-haiku-4-5-20251001"
+# Optional: a stronger model for the coach chat + today card (falls back to AI_MODEL).
+# e.g. COACH_MODEL = "claude-sonnet-4-6"  (roughly 5-10x the per-message cost of Haiku)
+# Strava app "MyPersonalAnalytics" (client id is public; the secret is a wrangler secret).
+STRAVA_CLIENT_ID = "280111"
+# Where /strava/callback bounces the browser back to after Authorize.
+APP_URL = "https://jozuna19.github.io/the-platform/"
 
 # Secrets (NOT stored here — set with `npx wrangler secret put`):
-#   ANTHROPIC_API_KEY   your Anthropic key (server-side only)
-#   APP_TOKEN           a long random string; the app sends it to prove it's you
+#   ANTHROPIC_API_KEY     your Anthropic key (server-side only)
+#   APP_TOKEN             a long random string; the app sends it to prove it's you
+#   STRAVA_CLIENT_SECRET  from strava.com/settings/api (rotate there with "Refresh secret")

@@ -6,13 +6,25 @@
  *   PUT  /state      -> saves the JSON blob (whole-document)
  *   POST /ai/parse   -> { text } -> parses a spoken/typed food entry into
  *                       structured items via Anthropic (key stays server-side)
+ *   POST /ai/today   -> today's run-coach card (headline + why + call) from live data
  *
- * Secrets (wrangler secret put): ANTHROPIC_API_KEY, APP_TOKEN
- * Vars (wrangler.toml): ALLOWED_ORIGIN, AI_MODEL
+ * Strava (tokens live ONLY in KV, never on the phone):
+ *   POST /strava/connect     -> { url } to send the browser to (state nonce stored in KV)
+ *   GET  /strava/callback    -> Strava redirects here (no Bearer; state-checked), stores tokens,
+ *                               then bounces back to the app with ?strava=connected|error
+ *   GET  /strava/status      -> { connected, athlete, expiresAt }
+ *   GET  /strava/activities  -> normalized activities, last N days (?days=70&force=1), 3-min KV cache
+ *   POST /strava/disconnect  -> forgets the tokens
+ *
+ * Secrets (wrangler secret put): ANTHROPIC_API_KEY, APP_TOKEN, STRAVA_CLIENT_SECRET
+ * Vars (wrangler.toml): ALLOWED_ORIGIN, AI_MODEL, COACH_MODEL (optional), STRAVA_CLIENT_ID, APP_URL
  */
 
 const STATE_KEY = "state:john";
 const HEALTH_KEY = "health:john"; // separate store: Shortcut writes, app only reads
+const STRAVA_KEY = "strava:john"; // OAuth tokens (access/refresh/expires_at)
+const STRAVA_ACTS = "strava:acts"; // short-lived cache of normalized activities
+const STRAVA_CACHE_MS = 3 * 60 * 1000;
 
 function cors(env) {
   return {
@@ -91,11 +103,14 @@ async function parseFood(text, env) {
 }
 
 const COACH_SYSTEM = `You are the AI coach built into John's personal fitness app "The Platform".
-John is on an aggressive but sustainable cut: from 247 lb toward ~195, roughly 1,900 kcal and ~185g protein on training days (a bit less on rest days), high protein, lifting 3-4x/week (squat/bench/deadlift focus, meet bests 485/309/562) plus Wednesday soccer for conditioning.
+John is on an aggressive but sustainable cut: from 247 lb toward ~195, roughly 1,900 kcal and ~185g protein on training days (a bit less on rest days), high protein, lifting 3-4x/week (Push Tue, Pull Fri, Legs Sun; squat/bench/deadlift focus, meet bests 485/309/562) plus Wednesday soccer for conditioning.
 You are his coach, food logger, and accountability partner. Be direct, concise, and practical - he likes casual, no fluff, action-first answers. Never lecture.
 
+You are ALSO his running coach. He is a hybrid athlete training for the Invesco QQQ Thanksgiving Half Marathon on Thu Nov 26 2026 (ran it in 2025: 2:40:50, 11:11/mi). His stated goal is to FINISH strong knowing he put in the work, not a PR. Tune-up races: Miche 5K Oct 18, PNC Atlanta 10 Miler Oct 24, Dia de Muertos 5K Oct 31. His 10-week plan runs 3 days a week: Monday easy, Thursday quality (tempo or strides), Saturday long, with Sunday legs and Wednesday soccer kept. CONTEXT.running gives you the plan week, this week's runs with done flags auto-matched from Strava, today's planned run, his recent Strava activities of every type, weekly mileage, consecutive training days, and today's feel check-in.
+Running rules you coach by: he tends to OVERTRAIN and UNDER-EAT, so protect rest and food. Six or more consecutive training days means tell him to take a rest or genuinely easy day. On his cut do not add carb fuel for runs under about 75 minutes; electrolytes are fine and encouraged (he cramps at soccer). Only long runs past 90 minutes may take a little fuel. If he says he feels wrecked, slept badly, or is cramping, downgrade the day without guilt. Treat Soccer as its own thing, not a run. Ignore GPS-glitch activities (paces faster than 5:00/mi or slower than 20:00/mi). When his lifting and running collide on a day, tell him which to keep and how to make the other easier.
+
 You are given, each message:
-- CONTEXT: his live data. This includes his full weekly training split (CONTEXT.weeklySplit), TODAY'S exact workout with the exercises and sets (CONTEXT.todayWorkout), his profile/stats (CONTEXT.profile: start/goal/current weight, meet bests, gym 1RMs, training style), today's calories/protein/fiber and remaining, recent weights, recent lifts, Apple Health workouts, and his logging streak.
+- CONTEXT: his live data. This includes his full weekly training split (CONTEXT.weeklySplit), TODAY'S exact workout with the exercises and sets (CONTEXT.todayWorkout), his running plan and Strava data (CONTEXT.running), his profile/stats (CONTEXT.profile: start/goal/current weight, meet bests, gym 1RMs, training style), today's calories/protein/fiber and remaining, recent weights, recent lifts, Apple Health workouts, and his logging streak.
 - MEMORY: durable facts he's told you before. Treat these as true and use them.
 
 CRITICAL: You already KNOW his program and today's workout from CONTEXT.todayWorkout and CONTEXT.weeklySplit. When he asks "what's my workout today" or "what am I supposed to do", answer directly with today's actual exercises and sets from CONTEXT.todayWorkout. NEVER say you don't have his split saved - you do, it's in CONTEXT.
@@ -106,6 +121,7 @@ You can take actions with tools:
 - log_weight: record a bodyweight in lb.
 - log_lift: record a strength set (lift name, weight lb, reps).
 - remember: save a durable fact about John for the future (injuries, preferences, goals, schedule). Use this whenever he tells you something worth remembering long-term.
+- log_feel: record how he feels today (wrecked / tired / good / great, plus tags like sore legs, slept bad, cramping) when he tells you. The run coach card uses it.
 - web_search: look up real nutrition facts / info when useful.
 
 Rules:
@@ -119,17 +135,118 @@ const CHAT_TOOLS = [
   { name: "log_weight", description: "Record John's bodyweight for today.", input_schema: { type: "object", properties: { lb: {type:"number"} }, required:["lb"] } },
   { name: "log_lift", description: "Record a strength set.", input_schema: { type: "object", properties: { lift:{type:"string"}, wt:{type:"number"}, reps:{type:"number"} }, required:["lift","wt","reps"] } },
   { name: "remember", description: "Save a durable fact about John for future conversations.", input_schema: { type: "object", properties: { note:{type:"string"} }, required:["note"] } },
+  { name: "log_feel", description: "Record how John feels today for the run coach.", input_schema: { type: "object", properties: { mood:{type:"string", enum:["wrecked","tired","good","great"]}, tags:{type:"array", items:{type:"string"}} }, required:["mood"] } },
 ];
-const CLIENT_TOOLS = { log_food:1, log_weight:1, log_lift:1, remember:1 };
+const CLIENT_TOOLS = { log_food:1, log_weight:1, log_lift:1, remember:1, log_feel:1 };
 
-async function anthropic(system, tools, messages, env) {
+// Coach-facing calls (chat + today card) can run on a stronger model than food parsing.
+function coachModel(env) { return env.COACH_MODEL || env.AI_MODEL || "claude-haiku-4-5-20251001"; }
+
+async function anthropic(system, tools, messages, env, opts) {
+  const o = opts || {};
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({ model: env.AI_MODEL || "claude-haiku-4-5-20251001", max_tokens: 1024, system, tools, messages }),
+    body: JSON.stringify({ model: o.model || env.AI_MODEL || "claude-haiku-4-5-20251001", max_tokens: o.maxTokens || 1024, system, tools, messages }),
   });
   if (!r.ok) { const t = await r.text(); throw new Error("anthropic " + r.status + ": " + t.slice(0, 300)); }
   return r.json();
+}
+
+/* ---------------- Strava ---------------- */
+const STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token";
+
+function normAct(a) {
+  const mi = (a.distance || 0) / 1609.34;
+  const secs = a.moving_time || 0;
+  return {
+    id: a.id,
+    name: String(a.name || "").slice(0, 60),
+    type: String(a.sport_type || a.type || "Workout"),
+    date: String(a.start_date_local || a.start_date || "").slice(0, 10),
+    start: a.start_date_local || a.start_date || null,
+    mi: Math.round(mi * 100) / 100,
+    min: Math.round(secs / 6) / 10,
+    paceSec: mi > 0.1 ? Math.round(secs / mi) : null,
+    hr: a.average_heartrate ? Math.round(a.average_heartrate) : null,
+    maxHr: a.max_heartrate ? Math.round(a.max_heartrate) : null,
+    elevFt: Math.round((a.total_elevation_gain || 0) * 3.281),
+    suffer: a.suffer_score || null,
+    kj: a.kilojoules || null,
+    device: a.device_name || null,
+  };
+}
+
+// Returns the stored token set, refreshing it first if it is (about to be) expired.
+async function stravaToken(env) {
+  const raw = await env.PLATFORM_STATE.get(STRAVA_KEY);
+  if (!raw) return null;
+  let t = JSON.parse(raw);
+  if (((t.expires_at || 0) * 1000) < Date.now() + 60 * 1000) {
+    const r = await fetch(STRAVA_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ client_id: env.STRAVA_CLIENT_ID, client_secret: env.STRAVA_CLIENT_SECRET, grant_type: "refresh_token", refresh_token: t.refresh_token }),
+    });
+    if (!r.ok) throw new Error("strava refresh " + r.status + ": " + (await r.text()).slice(0, 200));
+    const n = await r.json();
+    t = { ...t, access_token: n.access_token, refresh_token: n.refresh_token || t.refresh_token, expires_at: n.expires_at };
+    await env.PLATFORM_STATE.put(STRAVA_KEY, JSON.stringify(t));
+  }
+  return t;
+}
+
+function athleteOf(t) {
+  const a = (t && t.athlete) || null;
+  return a ? { id: a.id, name: [a.firstname, a.lastname].filter(Boolean).join(" ").trim() } : null;
+}
+
+async function stravaActivities(env, days, force) {
+  if (!force) {
+    const raw = await env.PLATFORM_STATE.get(STRAVA_ACTS);
+    if (raw) {
+      const c = JSON.parse(raw);
+      if (Date.now() - (c.fetchedAt || 0) < STRAVA_CACHE_MS && (c.days || 0) >= days) return c;
+    }
+  }
+  const t = await stravaToken(env);
+  if (!t) return null;
+  const after = Math.floor((Date.now() - days * 86400000) / 1000);
+  const acts = [];
+  for (let page = 1; page <= 3; page++) {
+    const r = await fetch("https://www.strava.com/api/v3/athlete/activities?" + new URLSearchParams({ after: String(after), per_page: "100", page: String(page) }),
+      { headers: { Authorization: "Bearer " + t.access_token } });
+    if (r.status === 401) { await env.PLATFORM_STATE.delete(STRAVA_KEY); throw new Error("strava token rejected; reconnect"); }
+    if (!r.ok) throw new Error("strava " + r.status + ": " + (await r.text()).slice(0, 200));
+    const batch = await r.json();
+    if (!Array.isArray(batch) || !batch.length) break;
+    batch.forEach((a) => acts.push(normAct(a)));
+    if (batch.length < 100) break;
+  }
+  acts.sort((a, b) => (a.start < b.start ? 1 : a.start > b.start ? -1 : 0));
+  const out = { connected: true, fetchedAt: Date.now(), days, athlete: athleteOf(t), acts };
+  await env.PLATFORM_STATE.put(STRAVA_ACTS, JSON.stringify(out));
+  return out;
+}
+
+const TODAY_SYSTEM = `You are John's running coach inside his app "The Platform". You write the ONE card he reads before training today.
+He is a hybrid athlete on a cut (about 1,900 kcal, high protein), lifting Push Tue / Pull Fri / Legs Sun, soccer Wed, and following a 10-week plan (Mon easy, Thu quality, Sat long) toward the Thanksgiving Half Marathon on Thu Nov 26 2026. Goal: finish strong, not a PR (2025: 2:40:50).
+He tends to overtrain and under-eat. Protect rest and food. Six or more consecutive training days means prescribe rest or truly easy. If he feels wrecked, slept badly, or is cramping, downgrade the day without guilt. No carb fuel for runs under ~75 min on the cut; electrolytes yes. Treat soccer separately from runs. Ignore GPS glitches.
+Use the DATA you are given. Refer to his actual numbers (miles, paces, streak, what he ate) when they matter. Plain text only: no markdown, no dashes, no emoji.
+Return ONLY a JSON object shaped exactly:
+{"headline": string (max 60 chars, what to do today, e.g. "Easy 3 miles, keep it conversational"), "why": string (1 or 2 short sentences tying it to his data), "call": "go" | "easy" | "rest" | "swap" | "race" | "done"}
+"call" meaning: go = do the planned session as written; easy = do it but easier/shorter; rest = skip today, recover; swap = do something different than planned (say what in headline); race = it is a race day; done = today's run is already logged, so the card is a debrief plus what tomorrow needs.`;
+
+async function coachToday(body, env) {
+  const data = await anthropic(TODAY_SYSTEM, [], [{ role: "user", content: "DATA:\n" + JSON.stringify(body) + "\n\nWrite the card." }], env, { model: coachModel(env), maxTokens: 400 });
+  const texts = (data.content || []).filter((x) => x.type === "text" && x.text).map((x) => x.text);
+  const raw = (texts.length ? texts[texts.length - 1] : "").trim();
+  const m = raw.match(/\{[\s\S]*\}/);
+  let parsed = null;
+  try { parsed = JSON.parse(m ? m[0] : raw); } catch (e) {}
+  if (!parsed || !parsed.headline) throw new Error("coach returned no card");
+  const calls = { go:1, easy:1, rest:1, swap:1, race:1, done:1 };
+  return { headline: String(parsed.headline).slice(0, 80), why: String(parsed.why || "").slice(0, 320), call: calls[parsed.call] ? parsed.call : "go" };
 }
 
 async function chatCoach(body, env) {
@@ -146,7 +263,7 @@ async function chatCoach(body, env) {
   // Agent loop: let the model call client tools (log_food/weight/lift/remember),
   // acknowledge each so its turn continues, and capture the final spoken reply.
   for (let step = 0; step < 4; step++) {
-    const data = await anthropic(system, CHAT_TOOLS, messages, env);
+    const data = await anthropic(system, CHAT_TOOLS, messages, env, { model: coachModel(env) });
     const blocks = data.content || [];
     const txt = blocks.filter((b) => b.type === "text" && b.text).map((b) => b.text).join("\n").trim();
     if (txt) replyParts.push(txt);
@@ -167,9 +284,65 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors(env) });
     if (url.pathname === "/healthz") return json({ ok: true }, 200, env);
 
+    // Strava sends the browser here after Authorize. No Bearer header is possible on a
+    // redirect, so the one-time `state` nonce we minted in /strava/connect is the auth.
+    if (url.pathname === "/strava/callback" && request.method === "GET") {
+      const appUrl = (env.APP_URL || "https://jozuna19.github.io/the-platform/");
+      const bounce = (q) => Response.redirect(appUrl + "?strava=" + q, 302);
+      const code = url.searchParams.get("code"), state = url.searchParams.get("state");
+      if (url.searchParams.get("error") || !code || !state) return bounce("error");
+      const ok = await env.PLATFORM_STATE.get("strava:state:" + state);
+      if (!ok) return bounce("error");
+      await env.PLATFORM_STATE.delete("strava:state:" + state);
+      try {
+        const r = await fetch(STRAVA_TOKEN_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ client_id: env.STRAVA_CLIENT_ID, client_secret: env.STRAVA_CLIENT_SECRET, code, grant_type: "authorization_code" }),
+        });
+        if (!r.ok) return bounce("error");
+        const tok = await r.json();
+        await env.PLATFORM_STATE.put(STRAVA_KEY, JSON.stringify(tok));
+        await env.PLATFORM_STATE.delete(STRAVA_ACTS);
+        return bounce("connected");
+      } catch (e) { return bounce("error"); }
+    }
+
     if (!authorized(request, env)) return json({ error: "unauthorized" }, 401, env);
 
     try {
+      if (url.pathname === "/strava/connect" && request.method === "POST") {
+        if (!env.STRAVA_CLIENT_ID || !env.STRAVA_CLIENT_SECRET) return json({ error: "strava not configured" }, 500, env);
+        const state = crypto.randomUUID();
+        await env.PLATFORM_STATE.put("strava:state:" + state, "1", { expirationTtl: 600 });
+        const authUrl = "https://www.strava.com/oauth/authorize?" + new URLSearchParams({
+          client_id: env.STRAVA_CLIENT_ID, redirect_uri: url.origin + "/strava/callback",
+          response_type: "code", approval_prompt: "auto", scope: "read,activity:read_all", state,
+        });
+        return json({ url: authUrl }, 200, env);
+      }
+      if (url.pathname === "/strava/status" && request.method === "GET") {
+        const raw = await env.PLATFORM_STATE.get(STRAVA_KEY);
+        if (!raw) return json({ connected: false }, 200, env);
+        const t = JSON.parse(raw);
+        return json({ connected: true, athlete: athleteOf(t), expiresAt: t.expires_at || null }, 200, env);
+      }
+      if (url.pathname === "/strava/activities" && request.method === "GET") {
+        const days = Math.min(400, Math.max(7, parseInt(url.searchParams.get("days") || "70", 10) || 70));
+        const force = url.searchParams.get("force") === "1";
+        const out = await stravaActivities(env, days, force);
+        return json(out || { connected: false }, 200, env);
+      }
+      if (url.pathname === "/strava/disconnect" && request.method === "POST") {
+        await env.PLATFORM_STATE.delete(STRAVA_KEY);
+        await env.PLATFORM_STATE.delete(STRAVA_ACTS);
+        return json({ ok: true }, 200, env);
+      }
+      if (url.pathname === "/ai/today" && request.method === "POST") {
+        const body = await request.json();
+        const card = await coachToday(body, env);
+        return json(card, 200, env);
+      }
       if (url.pathname === "/state" && request.method === "GET") {
         const v = await env.PLATFORM_STATE.get(STATE_KEY);
         return json(v ? JSON.parse(v) : {}, 200, env);

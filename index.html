@@ -71,16 +71,102 @@
     padding:6px 6px 8px;gap:2px}
   /* paint the bar's colour through the home-indicator zone so no black gap shows below it */
   .tabbar::after{content:"";position:absolute;left:0;right:0;top:99%;height:160px;background:var(--surface)}
-  .tabbar .tab{flex:1;background:none;border:none;color:var(--muted);cursor:pointer;
-    display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;border-radius:10px;min-height:48px}
-  .tabbar .tab .ti{font-size:20px;line-height:1;filter:grayscale(1) opacity(.7)}
-  .tabbar .tab .tl{font-family:var(--display);font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+  .tabbar .tab{flex:1;background:none;border:none;color:var(--muted);cursor:pointer;position:relative;
+    display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;border-radius:10px;min-height:48px}
+  .tabbar .tab .ti{font-size:20px;line-height:1;filter:grayscale(1) opacity(.7);transition:transform .25s cubic-bezier(.22,1,.36,1),filter .2s}
+  .tabbar .tab .tl{font-family:var(--display);font-size:9px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
   .tabbar .tab[aria-selected="true"]{color:var(--red)}
-  .tabbar .tab[aria-selected="true"] .ti{filter:none}
-  .logfab{flex:none;width:54px;height:54px;margin-top:-22px;border-radius:50%;border:3px solid var(--bg);
+  .tabbar .tab[aria-selected="true"] .ti{filter:none;transform:translateY(-1px)}
+  .tabbar .tab::before{content:"";position:absolute;top:0;left:50%;width:18px;height:3px;border-radius:0 0 3px 3px;background:var(--red);
+    transform:translateX(-50%) scaleX(0);transition:transform .25s cubic-bezier(.22,1,.36,1)}
+  .tabbar .tab[aria-selected="true"]::before{transform:translateX(-50%) scaleX(1)}
+  /* floating quick-log button (bottom-right, above the bar) */
+  .logfab{position:fixed;right:18px;bottom:calc(76px + env(safe-area-inset-bottom));z-index:120;width:56px;height:56px;border-radius:50%;border:none;
     background:var(--red);color:var(--accent-ink);font-size:30px;font-weight:300;line-height:1;cursor:pointer;
-    box-shadow:0 6px 18px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center}
-  .logfab:active{transform:scale(.94)}
+    box-shadow:0 10px 24px rgba(0,0,0,.42);display:flex;align-items:center;justify-content:center}
+  .logfab:active{transform:scale(.92)}
+  /* skeleton shimmer while Strava / coach load */
+  .skel{position:relative;overflow:hidden;background:var(--surface-2);border-radius:8px;color:transparent!important}
+  .skel::after{content:"";position:absolute;inset:0;transform:translateX(-100%);
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.07),transparent);animation:shimmer 1.4s infinite}
+  @keyframes shimmer{to{transform:translateX(100%)}}
+  @keyframes popin{0%{transform:scale(.4);opacity:0}70%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+  /* ---- RUN tab ---- */
+  .racestrip{display:flex;gap:8px;overflow-x:auto;padding:2px 0 10px;margin:0 -16px;padding-left:16px;padding-right:16px;scrollbar-width:none;scroll-snap-type:x proximity}
+  .racestrip::-webkit-scrollbar{display:none}
+  .racechip{flex:none;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;scroll-snap-align:start}
+  .racechip.next{border-color:var(--gold)}
+  .racechip.goal{border-color:var(--red);background:linear-gradient(180deg,color-mix(in srgb,var(--red) 14%,var(--surface)),var(--surface))}
+  .racechip .rc-n{font-family:var(--display);font-size:12px;font-weight:800;letter-spacing:.02em;line-height:1.2}
+  .racechip .rc-d{font-size:11px;color:var(--muted);margin-top:4px}
+  .racechip .rc-d b{color:var(--text);font-family:var(--mono);font-weight:700}
+  .planprog{margin:0 0 14px}
+  .planprog .pp-l{display:flex;justify-content:space-between;font-family:var(--display);font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .planprog .bar span{background:var(--gold)}
+  .runcard{border-left-color:var(--gold)}
+  .runstat{display:flex;align-items:center;gap:12px;margin-top:14px;padding:12px 14px;background:var(--surface-2);border-radius:10px;font-size:13.5px}
+  .runstat small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+  .chk{width:26px;height:26px;border-radius:50%;flex:none;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;
+    font-size:14px;font-weight:800;color:#17161A;transition:background .25s,border-color .25s}
+  .runstat.done .chk,.pw-r.done .chk{background:var(--gold);border-color:var(--gold)}
+  .chk.pop{animation:popin .4s cubic-bezier(.22,1,.36,1)}
+  .coachcard{margin-top:14px;padding:14px 16px;border-radius:12px;background:var(--surface-2);border-left:3px solid var(--red);min-height:56px}
+  .coachcard .ccall{display:inline-block;font-family:var(--display);font-size:9.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;
+    padding:3px 8px;border-radius:99px;background:var(--red);color:var(--accent-ink);margin-bottom:8px}
+  .coachcard .ccall[data-call="rest"],.coachcard .ccall[data-call="easy"]{background:var(--gold);color:#17161A}
+  .coachcard .ccall[data-call="done"]{background:var(--green);color:#fff}
+  .coachcard .chead{font-family:var(--display);font-size:16px;font-weight:800;letter-spacing:-.01em;line-height:1.25;text-wrap:balance}
+  .coachcard .cwhy{font-size:13px;color:var(--muted);margin-top:6px;line-height:1.45}
+  .feelrow{margin-top:16px;padding-top:14px;border-top:1px solid var(--border)}
+  .moods{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}
+  .mood{background:var(--surface-2);border:1px solid var(--border);color:var(--muted);border-radius:12px;padding:10px 4px 8px;cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;gap:4px;font-family:var(--display);font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+  .mood span{font-size:22px;line-height:1;filter:grayscale(1) opacity(.6);transition:transform .25s cubic-bezier(.22,1,.36,1),filter .2s}
+  .mood.on{border-color:var(--gold);color:var(--text);background:var(--surface)}
+  .mood.on span{filter:none;transform:scale(1.15)}
+  .ftags{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
+  .ftag{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:99px;padding:6px 11px;font-size:12px;cursor:pointer}
+  .ftag.on{border-color:var(--red);color:var(--text);background:color-mix(in srgb,var(--red) 14%,transparent)}
+  .runrail{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin:0 0 10px}
+  .rday{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:8px 2px 9px;text-align:center;cursor:pointer;position:relative;color:var(--muted)}
+  .rday .dl{font-family:var(--display);font-size:9.5px;font-weight:800;letter-spacing:.1em;display:block}
+  .rday .dn{font-size:13px;font-weight:700;display:block;margin-top:2px;color:var(--text)}
+  .rday .dt{font-family:var(--display);font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.02em;margin-top:4px;display:block;line-height:1.2;min-height:9.6px}
+  .rday.plan .dt{color:var(--text)}
+  .rday.race .dt{color:var(--red)}
+  .rday.today .dl{color:var(--red)}
+  .rday.sel{border-color:var(--gold);background:var(--surface-2)}
+  .rday .rdot{position:absolute;top:5px;right:5px;width:6px;height:6px;border-radius:50%;background:var(--gold)}
+  .rdetail{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;font-size:13px;margin-bottom:14px;line-height:1.45}
+  .pill{display:inline-block;background:var(--surface-2);border-radius:99px;padding:3px 9px;font-size:11.5px;font-family:var(--mono);color:var(--gold)}
+  .wkbars{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;align-items:end;height:84px;margin:6px 0 4px}
+  .wkb{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:5px}
+  .wkfill{width:100%;height:calc(100% - 16px);background:var(--surface-2);border-radius:5px;position:relative;overflow:hidden}
+  .wkfill::after{content:"";position:absolute;inset:0;background:var(--muted);opacity:.55;transform-origin:bottom;transform:scaleY(var(--h,0));transition:transform .7s cubic-bezier(.22,1,.36,1)}
+  .wkb.cur .wkfill::after{background:var(--red);opacity:1}
+  .wkl{font-family:var(--mono);font-size:8.5px;color:var(--muted)}
+  .wkline{display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px}
+  .runlist{display:flex;flex-direction:column}
+  .runrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)}
+  .runrow:last-child{border-bottom:none}
+  .runrow .rr-l{min-width:0;font-size:14px}
+  .runrow small{display:block;color:var(--muted);font-size:11.5px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .runrow .rr-r{text-align:right;font-size:15px;font-weight:700;flex:none}
+  .planfull summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+  .planfull summary::-webkit-details-marker{display:none}
+  .planfull .sum-r{font-family:var(--mono);font-size:12px;color:var(--gold)}
+  .pw{margin-top:12px}
+  .pw-h{font-family:var(--display);font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding-bottom:5px;border-bottom:1px solid var(--border)}
+  .pw-h span{font-weight:600;letter-spacing:.02em;text-transform:none;margin-left:6px}
+  .pw.cur .pw-h{color:var(--gold)}
+  .pw-r{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:13px;color:var(--muted)}
+  .pw-r .chk{width:20px;height:20px;font-size:11px}
+  .pw-r.done,.pw-r.today{color:var(--text)}
+  .pw-r.done .pw-l{text-decoration:line-through;text-decoration-color:var(--gold);color:var(--muted)}
+  .pw-r .pw-d{font-family:var(--mono);font-size:11.5px;width:76px;flex:none}
+  .pw-r .pw-l{flex:1}
+  .pw-r .pw-a{color:var(--gold);font-size:12px}
+  .pw-r.today .pw-l{color:var(--red);font-weight:700}
   .view{display:none}
   .view.on{display:block}
   .nhlink{background:none;border:none;padding:0;cursor:pointer;font-family:var(--display);
@@ -112,7 +198,7 @@
 
   .rail{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin:0 0 18px}
   .day{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
-    padding:9px 3px 10px;text-align:center;cursor:pointer;position:relative}
+    padding:9px 3px 10px;text-align:center;cursor:pointer;position:relative;transition:border-color .2s,background .2s}
   .day:hover{border-color:var(--muted)}
   .day .dl{font-family:var(--display);font-size:10px;font-weight:800;letter-spacing:.12em;color:var(--muted);display:block}
   .day .dt{font-family:var(--display);font-size:8.5px;font-weight:700;text-transform:uppercase;
@@ -130,7 +216,8 @@
   .focus{margin:12px 0 0;padding:9px 12px;background:var(--surface-2);border-radius:8px;font-size:12.5px;color:var(--muted)}
   .focus b{color:var(--gold);font-weight:700}
   .bar{height:4px;background:var(--surface-2);border-radius:99px;overflow:hidden;margin:16px 0 4px}
-  .bar span{display:block;height:100%;background:var(--red);width:0;transition:width .25s}
+  /* fills animate on transform (GPU), not width: set --p 0..1 */
+  .bar span{display:block;height:100%;width:100%;background:var(--red);transform-origin:left;transform:scaleX(var(--p,0));transition:transform .6s cubic-bezier(.22,1,.36,1)}
   .bar.full span{background:var(--gold)}
   .barlabel{font-size:11px;color:var(--muted);display:flex;justify-content:space-between}
 
@@ -289,7 +376,7 @@
   .ring .rt{font-size:10.5px;color:var(--muted);margin-top:3px}
   .ring .rk{font-size:8.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-top:6px}
   .ring .mbar{height:4px;background:rgba(255,255,255,.06);border-radius:99px;overflow:hidden;margin-top:8px}
-  .ring .mbar span{display:block;height:100%;width:0;background:var(--green)}
+  .ring .mbar span{display:block;height:100%;width:100%;background:var(--green);transform-origin:left;transform:scaleX(var(--p,0));transition:transform .6s cubic-bezier(.22,1,.36,1)}
   .ring[data-over="1"] .mbar span{background:var(--red)}
   .ring.cal .mbar span{background:var(--red)}
   .ring.prot .mbar span{background:var(--gold)}
@@ -362,9 +449,9 @@
   #coachPanel.on{animation:coachin .22s cubic-bezier(.22,1,.36,1)}
   .cmsg{animation:viewin .18s ease}
   @media (prefers-reduced-motion:reduce){
-    .aiorb .core,.aiorb .glow{animation:none}
+    .aiorb .core,.aiorb .glow,.skel::after,.chk.pop{animation:none}
     .view.anim,.modal.on .sheet,#coachPanel.on,.cmsg{animation:none}
-    .tab,.btn,.staple,.sugchip,.icref,.set,.homecard,.dnav,.dlabel,.logfab{transition:none}
+    .tab,.btn,.staple,.sugchip,.icref,.set,.homecard,.dnav,.dlabel,.logfab,.bar span,.ring .mbar span,.wkfill::after,.mood span,.tabbar .tab::before{transition:none}
   }
   .reuserow .btn{flex:1;font-size:11px;padding:10px 8px}
   .streak{margin-top:8px;font-size:12.5px;color:var(--gold);font-weight:700}
@@ -445,10 +532,11 @@
 <nav class="tabbar" role="tablist">
   <button class="tab" role="tab" data-view="home" aria-selected="true"><span class="ti">🏠</span><span class="tl">Home</span></button>
   <button class="tab" role="tab" data-view="food" aria-selected="false"><span class="ti">🍽️</span><span class="tl">Food</span></button>
-  <button class="logfab" id="logFab" aria-label="Quick log">+</button>
   <button class="tab" role="tab" data-view="train" aria-selected="false"><span class="ti">🏋️</span><span class="tl">Train</span></button>
+  <button class="tab" role="tab" data-view="run" aria-selected="false"><span class="ti">🏃</span><span class="tl">Run</span></button>
   <button class="tab" role="tab" data-view="body" aria-selected="false"><span class="ti">📊</span><span class="tl">Body</span></button>
 </nav>
+<button class="logfab" id="logFab" aria-label="Quick log">+</button>
 
 <div class="datebar" id="dateBar">
   <button class="dnav" id="datePrev" aria-label="Previous day">‹</button>
@@ -478,8 +566,14 @@
     <tbody id="sBody"></tbody></table>
     <div class="empty" id="sEmpty">Nothing logged yet. Meet best: 485 squat &middot; 309 bench &middot; 562 deadlift.</div>
   </section>
+</div>
+
+<!-- RUN -->
+<div class="view" id="v-run">
+  <div id="runBody"></div>
   <section class="panel">
-    <h3>Runs &middot; Triple Peach</h3>
+    <h3>Manual run log</h3>
+    <p style="font-size:12px;color:var(--muted);margin:-4px 0 6px">Only for runs your watch missed. Strava runs show here automatically.</p>
     <form class="row" id="rForm">
       <input id="rMi" type="number" step="0.1" placeholder="miles" aria-label="Miles" style="flex:1">
       <input id="rTime" placeholder="time (42:30)" aria-label="Time" style="flex:1.4">
@@ -488,7 +582,6 @@
     <table><thead><tr><th>Dist</th><th style="text-align:right">Time</th><th style="text-align:right">Pace</th><th style="text-align:right">Date</th></tr></thead>
     <tbody id="rBody"></tbody></table>
     <div class="empty" id="rEmpty">No runs logged yet.</div>
-    <div class="races" id="races" style="margin-top:14px"></div>
   </section>
 </div>
 
@@ -605,6 +698,12 @@
     <button class="btn full" id="cfgSave">Connect &amp; sync</button>
     <p id="cfgStatus" style="font-size:12px;color:var(--muted);margin-top:10px"></p>
     <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
+      <label class="eyebrow">Strava</label>
+      <p id="stravaStatus" style="font-size:12.5px;color:var(--muted);margin:6px 0 10px">Checking…</p>
+      <button class="btn full ghost" id="stravaBtn">Connect Strava</button>
+      <p style="font-size:11.5px;color:var(--muted);margin-top:8px">Tokens live on the backend only. Your runs auto-check the plan and the coach sees real paces.</p>
+    </div>
+    <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border)">
       <label class="eyebrow">Theme</label>
       <div id="themeSwatches" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px"></div>
     </div>
@@ -704,6 +803,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=32"></script>
+<script src="app.js?v=33"></script>
 </body>
 </html>
