@@ -64,6 +64,7 @@ function weekStart(d){var x=new Date(d);x.setDate(x.getDate()-x.getDay());return
 
 /* ---------- cloud sync ---------- */
 var syncTimer=null, syncing=false;
+var synced=false; // true once the first pull() has reconciled with the cloud; automatic writers wait for it
 function setSync(s){var d=document.getElementById("syncDot"); if(d) d.setAttribute("data-s",s);}
 function localSave(){try{localStorage.setItem(KEY,JSON.stringify(db));}catch(e){}}
 function save(){ db.meta.updated=Date.now(); localSave(); queuePush(); }
@@ -105,6 +106,7 @@ function pull(cb){
        db.feel=db.feel||{};db.coachToday=db.coachToday||{};
        localSave();
      }
+     synced=true;
      setSync("ok"); if(cb)cb();
    })
    .catch(function(){ setSync("off"); if(cb)cb(); });
@@ -1128,7 +1130,8 @@ var todayBusy=false;
 function coachToday(force){
   var k=iso(TODAY),key=todayKey(),c=(db.coachToday||{})[k];
   if(!force&&c&&c.key===key){ renderTodayCoach(c); return; }
-  if(!cfg.url||!cfg.tok||!STRAVA.fetchedAt||todayBusy){ if(c)renderTodayCoach(c); return; }
+  // wait for cloud reconcile (synced) so this never pushes a stale local db over the phone's data
+  if(!cfg.url||!cfg.tok||!STRAVA.fetchedAt||!synced||todayBusy){ if(c)renderTodayCoach(c); return; }
   todayBusy=true; renderTodayCoach(null);
   fetch(cfg.url.replace(/\/$/,"")+"/ai/today",{method:"POST",headers:{"Authorization":"Bearer "+cfg.tok,"Content-Type":"application/json"},body:JSON.stringify(todayPayload())})
    .then(function(r){return r.ok?r.json():null;})
@@ -1136,7 +1139,8 @@ function coachToday(force){
      if(!j||!j.headline){ renderTodayCoach(c||{headline:"Coach is unavailable right now.",why:"",call:"go"}); return; }
      db.coachToday=db.coachToday||{}; db.coachToday[k]={key:key,headline:j.headline,why:j.why||"",call:j.call||"go",ts:Date.now()};
      var old=iso(new Date(TODAY.getTime()-7*86400000)); Object.keys(db.coachToday).forEach(function(d){if(d<old)delete db.coachToday[d];});
-     save(); renderTodayCoach(db.coachToday[k]); drawHome(); })
+     localSave(); // device cache only; the card rides along on the next user-driven save, never forces a push
+     renderTodayCoach(db.coachToday[k]); drawHome(); })
    .catch(function(){ todayBusy=false; renderTodayCoach(c||{headline:"Couldn't reach the coach.",why:"",call:"go"}); });
 }
 function renderTodayCoach(c){
@@ -1438,10 +1442,10 @@ document.getElementById("coachTone").addEventListener("click",function(){db.sett
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=33").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=34").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=33; // bump this + version.json + ?v= on every release
+var APPVER=34; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})

@@ -246,7 +246,8 @@ async function coachToday(body, env) {
   try { parsed = JSON.parse(m ? m[0] : raw); } catch (e) {}
   if (!parsed || !parsed.headline) throw new Error("coach returned no card");
   const calls = { go:1, easy:1, rest:1, swap:1, race:1, done:1 };
-  return { headline: String(parsed.headline).slice(0, 80), why: String(parsed.why || "").slice(0, 320), call: calls[parsed.call] ? parsed.call : "go" };
+  const noDash = (s) => String(s || "").replace(/\s*[—–]\s*/g, ", ").replace(/\s+-\s+/g, ", "); // John: no dashes
+  return { headline: noDash(parsed.headline).slice(0, 80), why: noDash(parsed.why).slice(0, 320), call: calls[parsed.call] ? parsed.call : "go" };
 }
 
 async function chatCoach(body, env) {
