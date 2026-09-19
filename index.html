@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0B0B0C">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -38,12 +38,18 @@
     --text:var(--chalk);--muted:var(--fog);--border:var(--line);
     --gold:#D4A63C;--green:#4E9F63;
   }
-  *{box-sizing:border-box}
-  html{overscroll-behavior:none}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html{overscroll-behavior:none;height:100%;-webkit-text-size-adjust:100%}
+  /* App shell: the BODY never scrolls (so iOS can never move the fixed tab bar); .wrap is the one scroller. */
   body{margin:0;background:var(--bg);color:var(--text);font-family:var(--body);
     line-height:1.5;-webkit-font-smoothing:antialiased;overscroll-behavior:none;
-    padding:0 16px calc(96px + env(safe-area-inset-bottom));}
-  .wrap{max-width:var(--maxw);margin:0 auto}
+    position:fixed;inset:0;overflow:hidden;touch-action:manipulation;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  input,textarea,select,[contenteditable]{-webkit-user-select:text;user-select:text}
+  .wrap{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior:none;
+    padding:0 16px calc(96px + env(safe-area-inset-bottom));scrollbar-width:none}
+  .wrap::-webkit-scrollbar{display:none}
+  .wrap>*{max-width:var(--maxw);margin-left:auto;margin-right:auto}
   .eyebrow{font-family:var(--display);font-size:10.5px;font-weight:800;
     text-transform:uppercase;letter-spacing:.2em;color:var(--muted)}
   h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0}
@@ -313,6 +319,14 @@
   .dot.train{background:var(--green)}
   .callegend{margin-top:12px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:4px}
   .callegend .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+  /* ---- freeform day picker ---- */
+  .kinds{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .kind{background:var(--surface-2);border:1px solid var(--border);color:var(--text);border-radius:12px;padding:13px 12px;cursor:pointer;text-align:left;
+    display:flex;flex-direction:column;gap:3px;transition:border-color .2s,transform .12s}
+  .kind b{font-family:var(--display);font-size:13px;font-weight:800;letter-spacing:.02em;text-transform:uppercase}
+  .kind small{font-size:11px;color:var(--muted)}
+  .kind:hover{border-color:var(--gold)}
+  .kind[data-kind="rest"],.kind[data-kind="soccer"]{background:transparent}
   /* ---- flexible session ---- */
   .exdel{background:none;border:none;color:var(--muted);font-size:16px;line-height:1;padding:0 2px 0 6px;cursor:pointer;align-self:center}
   .exdel:hover{color:var(--red)}
@@ -493,8 +507,8 @@
   .aiitem input{margin-top:8px}
 
   section{margin-top:0}
-  footer{margin-top:22px;padding-top:16px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted);
-    display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center}
+  footer{margin-top:22px;padding:16px 72px 0 0;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted);
+    display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center} /* right pad clears the floating + */
   footer .lk{background:none;border:none;color:var(--muted);text-decoration:underline;cursor:pointer;font-size:11.5px;padding:0}
   footer .lk:hover{color:var(--red)}
   .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);
@@ -803,6 +817,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=34"></script>
+<script src="app.js?v=35"></script>
 </body>
 </html>

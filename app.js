@@ -1,26 +1,34 @@
 (function(){
 "use strict";
 
-/* ---------- The Cut program (by weekday 0=Sun..6=Sat) ---------- */
-var PROGRAM = {
-  2:{name:"Push",type:"upper",tag:"Chest · shoulders · triceps",focus:"Heavy pressing, 2 reps shy of failure. Accessories closer to failure.",
-     ex:[["Bench","4 × 6"],["Incline DB Press","3 × 8"],["Overhead Press","3 × 8"],["Lateral Raise","3 × 15"],["Triceps Pushdown","3 × 12"]]},
-  5:{name:"Pull",type:"upper",tag:"Back · biceps",focus:"Row and pull with intent. Squeeze every rep, leave 1-2 in the tank on the heavy rows.",
-     ex:[["Barbell Row","4 × 8"],["Lat Pulldown","3 × 10"],["Chest-Supported Row","3 × 10"],["Face Pull","3 × 15"],["Biceps Curl","3 × 12"]]},
-  0:{name:"Legs",type:"lower",tag:"Your weekend leg day",focus:"Main lifts stop 2 reps short of failure. Long run was yesterday: if the legs are heavy, drop a set, not the session.",
-     ex:[["Squat","4 × 5"],["Romanian Deadlift","3 × 8"],["Leg Press","3 × 12"],["Leg Curl","3 × 12"],["Standing Calf Raise","3 × 15"]]},
-  3:{name:"Soccer",cardio:true,focus:"~2.5 hrs. This is your conditioning — don't add cardio on top.",note:"Electrolytes before, hydrate hard."},
-  1:{name:"Rest",rest:true,focus:"No lifting. Hit protein, get your steps.",note:""},
-  4:{name:"Rest",rest:true,focus:"No lifting. Hit protein, get your steps.",note:""},
-  6:{name:"Rest",rest:true,focus:"No lifting. Hit protein, get your steps.",note:""}
+/* ---------- Training days are FREEFORM: John picks the kind of day, then logs exercises as he goes ---------- */
+var DAY_KINDS={
+  push:{name:"Push",short:"Push",type:"upper",tag:"Chest · shoulders · triceps",focus:"Heavy pressing 2 reps shy of failure. Accessories closer to failure."},
+  pull:{name:"Pull",short:"Pull",type:"upper",tag:"Back · biceps",focus:"Row and pull with intent. Leave 1-2 in the tank on the heavy rows."},
+  legs:{name:"Legs",short:"Legs",type:"lower",tag:"Quads · hams · calves",focus:"Main lifts stop 2 reps short. Heavy legs from running? Drop a set, not the session."},
+  arms:{name:"Shoulders & Arms",short:"Arms",type:"arms",tag:"Delts · biceps · triceps",focus:"Pump work. Moderate loads, full range, chase the burn not the number."},
+  full:{name:"Full body",short:"Full",type:"full",tag:"A bit of everything",focus:"One big lift per pattern, then accessories."},
+  soccer:{name:"Soccer",short:"Soccer",cardio:true,focus:"This is your conditioning. Electrolytes before, hydrate hard.",note:"~2.5 hrs."},
+  rest:{name:"Rest",short:"Rest",rest:true,focus:"No lifting. Hit protein, get your steps."}
 };
-/* exercise library for the picker + rule-based suggestions, by day type */
+var KIND_ORDER=["push","pull","legs","arms","full","soccer","rest"];
+/* optional one-tap starters (his usual sessions) — never prescribed, only offered */
+var TEMPLATES={
+  push:[["Bench","4 × 6"],["Incline DB Press","3 × 8"],["Overhead Press","3 × 8"],["Lateral Raise","3 × 15"],["Triceps Pushdown","3 × 12"]],
+  pull:[["Barbell Row","4 × 8"],["Lat Pulldown","3 × 10"],["Chest-Supported Row","3 × 10"],["Face Pull","3 × 15"],["Biceps Curl","3 × 12"]],
+  legs:[["Squat","4 × 5"],["Romanian Deadlift","3 × 8"],["Leg Press","3 × 12"],["Leg Curl","3 × 12"],["Standing Calf Raise","3 × 15"]],
+  arms:[["Overhead Press","3 × 8"],["Lateral Raise","3 × 15"],["Rear Delt Fly","3 × 15"],["Biceps Curl","3 × 12"],["Hammer Curl","3 × 10"],["Triceps Pushdown","3 × 12"],["Overhead Triceps Ext","3 × 12"]],
+  full:[["Squat","3 × 5"],["Bench","3 × 6"],["Barbell Row","3 × 8"],["Romanian Deadlift","3 × 8"],["Overhead Press","3 × 8"]]
+};
+/* exercise library for the picker + rule-based suggestions, by focus */
 var EXLIB = {
   upper:["Bench","Incline DB Press","Overhead Press","Barbell Row","Chest-Supported Row","Lat Pulldown","Pull-up","Seated Cable Row","Lateral Raise","Rear Delt Fly","Face Pull","Biceps Curl","Hammer Curl","Triceps Pushdown","Overhead Triceps Ext","Dip","Cable Fly"],
   lower:["Back Squat","Front Squat","Leg Press","Romanian Deadlift","Trap-Bar Deadlift","Split Squat","Walking Lunge","Bulgarian Split Squat","Leg Curl","Leg Extension","Hip Thrust","Standing Calf Raise","Seated Calf Raise","Hack Squat"],
+  arms:["Overhead Press","Arnold Press","Lateral Raise","Rear Delt Fly","Face Pull","Upright Row","Shrug","Biceps Curl","Hammer Curl","Preacher Curl","Incline DB Curl","Triceps Pushdown","Overhead Triceps Ext","Skull Crusher","Dip"],
   core:["Plank","Hanging Leg Raise","Cable Crunch","Ab Wheel","Russian Twist","Back Extension"]
 };
-var SHORT={0:"Legs",1:"Rest",2:"Push",3:"Soccer",4:"Rest",5:"Pull",6:"Rest"};
+EXLIB.full=EXLIB.upper.concat(EXLIB.lower);
+var LEGACY_KIND={0:"legs",2:"push",3:"soccer",5:"pull"}; // the old fixed weekday split — only used to label days logged BEFORE freeform
 var LET=["S","M","T","W","T","F","S"];
 var START=247, RUNGS=[247,235,225,215,205,195];
 var LIFT_DAYS={0:1,2:1,3:1,5:1,6:1}; // training-macro default (Push Tue, Soccer Wed, Pull Fri, Sat long run, Legs Sun)
@@ -125,7 +133,7 @@ Array.prototype.forEach.call(document.querySelectorAll(".tab"),function(t){
     if(v==="home") drawHome();
     if(v==="food") pullHealth();
     if(v==="run"){ drawRun(); pullStrava(false); }
-    window.scrollTo(0,0);
+    var sc=document.querySelector(".wrap"); if(sc) sc.scrollTop=0; // .wrap is the scroller (body is a fixed app shell)
   });
 });
 /* any element with data-go="view" jumps to that tab */
@@ -154,25 +162,47 @@ document.addEventListener("click",function(e){
 /* ---------- TRAIN: rail + card ---------- */
 function schemeTarget(scheme){var n=parseInt(scheme,10);return isNaN(n)?1:n;}
 function dayEntry(k){return db.log[k]||(db.log[k]={done:false});}
-// Editable per-day session. Migrates old {sets:{i:count}} → named exercise list; seeds from program.
-function session(k,dow){
-  var p=PROGRAM[dow];
+// What kind of day is this? Explicit choice wins; days logged under the old fixed split get their legacy label; else nothing.
+function dayKind(k){
+  var e=db.log[k]; if(!e)return null;
+  if(e.kind)return e.kind;
+  if((e.exercises&&e.exercises.length)||e.done||e.finished||e.sets){ var lk=LEGACY_KIND[new Date(k+"T12:00:00").getDay()]; if(lk)return lk; }
+  return null;
+}
+function dayInfo(k){var kind=dayKind(k);return kind?Object.assign({kind:kind},DAY_KINDS[kind]):null;}
+// Editable per-day session. Blank by default. Migrates the very old {sets:{i:count}} shape via the legacy template.
+function session(k){
   var e=db.log[k]||(db.log[k]={});
   if(!e.exercises){
-    e.exercises=(p.ex||[]).map(function(x,i){
-      return {name:x[0],scheme:x[1],target:schemeTarget(x[1]),done:(e.sets&&e.sets[i])?e.sets[i]:0};
-    });
+    var tpl=(e.sets&&TEMPLATES[dayKind(k)])||[];
+    e.exercises=tpl.map(function(x,i){return {name:x[0],scheme:x[1],target:schemeTarget(x[1]),done:(e.sets&&e.sets[i])?e.sets[i]:0};});
     if(e.sets)delete e.sets;
     if(e.finished===undefined)e.finished=false;
   }
   return e;
 }
-function totalSets(k,dow){var s=session(k,dow);return s.exercises.reduce(function(a,x){return a+(x.target||0);},0);}
-function doneSets(k,dow){var s=session(k,dow);return s.exercises.reduce(function(a,x){return a+Math.min(x.done||0,x.target||0);},0);}
-function isDayDone(k,dow){
-  var p=PROGRAM[dow];if(p.rest)return false;
+function lastSessionOf(kind,before){
+  var keys=Object.keys(db.log).filter(function(d){return d<before&&dayKind(d)===kind&&db.log[d].exercises&&db.log[d].exercises.length;}).sort();
+  if(!keys.length)return null; var d=keys[keys.length-1]; return {k:d,exercises:db.log[d].exercises};
+}
+function setDayKind(k,kind){
+  var e=db.log[k]||(db.log[k]={}); e.kind=kind;
+  if(DAY_KINDS[kind].rest||DAY_KINDS[kind].cardio){ if(e.exercises&&!e.exercises.length)delete e.exercises; }
+  else { e.exercises=e.exercises||[]; if(e.finished===undefined)e.finished=false; }
+  save(); drawRail(); drawTrainCard(); drawHome(); drawFood();
+}
+function applyTemplate(k,which){
+  var kind=dayKind(k); if(!kind)return; var s=session(k);
+  var rows=which==="last"?((lastSessionOf(kind,k)||{}).exercises||[]).map(function(x){return [x.name,x.scheme||"3 × 10"];}):(TEMPLATES[kind]||[]);
+  rows.forEach(function(x){ if(!s.exercises.some(function(y){return y.name.toLowerCase()===x[0].toLowerCase();})) s.exercises.push({name:x[0],scheme:x[1],target:schemeTarget(x[1]),done:0}); });
+  save(); drawRail(); drawTrainCard(); toast(rows.length?("Added "+rows.length+" exercises"):"Nothing to copy");
+}
+function totalSets(k){var s=session(k);return s.exercises.reduce(function(a,x){return a+(x.target||0);},0);}
+function doneSets(k){var s=session(k);return s.exercises.reduce(function(a,x){return a+Math.min(x.done||0,x.target||0);},0);}
+function isDayDone(k){
+  var info=dayInfo(k); if(!info||info.rest)return false;
   var e=db.log[k];if(!e)return false;
-  if(p.cardio)return !!e.done;
+  if(info.cardio)return !!e.done;
   if(e.finished)return true;
   if(!e.exercises||!e.exercises.length)return false;
   return e.exercises.every(function(x){return (x.done||0)>=(x.target||0);});
@@ -184,7 +214,7 @@ function drawRail(){
     var d=new Date(ws);d.setDate(ws.getDate()+i);var k=iso(d),dow=d.getDay();
     html+='<button class="day" data-i="'+i+'"'+(k===iso(viewing)?' data-viewing="1"':'')+
       (k===iso(TODAY)?' data-today="1"':'')+(isDayDone(k,dow)?' data-done="1"':'')+
-      '><span class="dl">'+LET[dow]+'</span><span class="dt">'+railLabel(k,dow)+'</span></button>';
+      '><span class="dl">'+LET[dow]+'</span><span class="dt">'+railLabel(k)+'</span></button>';
   }
   document.getElementById("rail").innerHTML=html;
   Array.prototype.forEach.call(document.querySelectorAll("#rail .day"),function(b){
@@ -192,58 +222,77 @@ function drawRail(){
   });
 }
 function drawTrainCard(){
-  var k=iso(viewing),dow=viewing.getDay(),p=PROGRAM[dow],isToday=k===iso(TODAY);
+  var k=iso(viewing),isToday=k===iso(TODAY),info=dayInfo(k),pr=planFor(k);
   var label=viewing.toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"});
-  var h='<div class="head"><h2>'+p.name+(p.optional?' <span style="font-size:11px;color:var(--muted)">optional</span>':'')+
-    '</h2><span class="date">'+(isToday?"Today &middot; ":"")+label+'</span></div>'+
-    '<div class="focus"><b>'+(p.tag||"Plan")+'.</b> '+p.focus+'</div>';
-  if(p.rest){
-    var pr=planFor(k);
-    h+='<div class="cardio"><div class="big">'+(pr?"Run day":"Rest day")+'</div><p>'+(pr?("No lifting today. "+esc(planLabel(pr))+" is on the plan."):p.focus)+'</p>'+
-      (pr?'<button class="btn ghost" data-go="run">Open Run →</button>':'')+'</div>';
-  }else if(p.cardio){
-    var e=dayEntry(k);
-    h+='<div class="cardio"><div class="big">'+(e.done?"Logged":"Not logged yet")+'</div><p>'+p.note+'</p>'+
-      '<button class="btn '+(e.done?"done":"")+'" id="cardioBtn">'+(e.done?"✓ Complete":"Mark complete")+'</button></div>';
-  }else{
-    var s0=session(k,dow), ex=s0.exercises;
-    var tot=ex.reduce(function(a,x){return a+(x.target||0);},0);
-    var got=ex.reduce(function(a,x){return a+Math.min(x.done||0,x.target||0);},0);
-    var pct=tot?Math.round(got/tot*100):0, allDone=isDayDone(k,dow);
-    h+='<div class="bar'+(pct>=100?" full":"")+'"><span style="--p:'+(pct/100)+'"></span></div>'+
-      '<div class="barlabel"><span>'+(s0.finished?"Workout finished":(pct>=100?"All sets done":"Sets logged"))+'</span><span class="num">'+ex.length+' ex &middot; '+got+' / '+tot+' sets</span></div><ul class="ex">';
-    ex.forEach(function(x,i){var n=x.target||0,c=x.done||0;
-      h+='<li'+(c>=n?' data-complete="1"':'')+'><div class="exname">'+esc(x.name)+'<small>'+esc(x.scheme||"")+'</small></div><div class="sets">';
-      for(var st=1;st<=n;st++)h+='<button class="set" data-ex="'+i+'" data-s="'+st+'" aria-pressed="'+(st<=c)+'">'+st+'</button>';
-      h+='<button class="exdel" data-exdel="'+i+'" aria-label="Remove '+esc(x.name)+'">×</button>';
-      h+='</div></li>';});
-    h+='</ul>';
-    h+='<div class="sessbtns">'+
-      '<button class="btn ghost" id="addExBtn">➕ Add exercise</button>'+
-      '<button class="btn ghost" id="suggestBtn">💡 Suggest more</button>'+
-      '</div>'+
-      '<div id="suggestBox"></div>'+
-      '<button class="btn full '+(s0.finished?"done":"")+'" id="finishBtn" style="margin-top:10px">'+(s0.finished?"✓ Workout finished — reopen":"✅ Finish workout")+'</button>';
+  var runLine=pr?'<div class="focus" style="display:flex;align-items:center;gap:8px">🏃 <span style="flex:1"><b>'+esc(planLabel(pr))+'</b> is on the run plan</span><button class="lk" data-go="run" style="text-decoration:underline;flex:none">open Run</button></div>':'';
+  var h;
+  if(!info){
+    // blank day: he picks what he's training (nothing is prescribed by weekday)
+    h='<div class="head"><h2>'+(isToday?"Today":"Train")+'</h2><span class="date">'+label+'</span></div>'+runLine+
+      '<div class="eyebrow" style="margin:16px 0 9px">What are you training?</div>'+
+      '<div class="kinds">'+KIND_ORDER.map(function(kk){var d=DAY_KINDS[kk];return '<button class="kind" data-kind="'+kk+'"><b>'+esc(d.name)+'</b><small>'+esc(d.tag||d.note||"")+'</small></button>';}).join("")+'</div>';
+  } else {
+    h='<div class="head"><h2>'+esc(info.name)+'</h2><span class="date">'+(isToday?"Today &middot; ":"")+label+'</span></div>'+
+      '<div class="focus"><b>'+esc(info.tag||info.name)+'.</b> '+esc(info.focus)+' <button class="lk" id="changeKind" style="text-decoration:underline;margin-left:4px">change</button></div>'+runLine;
+    if(info.rest){
+      h+='<div class="cardio"><div class="big">Rest day</div><p>'+esc(info.focus)+'</p></div>';
+    }else if(info.cardio){
+      var e=dayEntry(k);
+      h+='<div class="cardio"><div class="big">'+(e.done?"Logged":"Not logged yet")+'</div><p>'+esc(info.note||"")+'</p>'+
+        '<button class="btn '+(e.done?"done":"")+'" id="cardioBtn">'+(e.done?"✓ Complete":"Mark complete")+'</button></div>';
+    }else{
+      var s0=session(k), ex=s0.exercises;
+      if(!ex.length){
+        var last=lastSessionOf(info.kind,k);
+        h+='<div class="eyebrow" style="margin:14px 0 8px">Start from</div><div class="sugchips">'+
+          (last?'<button class="sugchip" data-tpl="last">↺ Last '+esc(info.name)+' · '+last.k.slice(5).replace("-","/")+'</button>':'')+
+          (TEMPLATES[info.kind]?'<button class="sugchip" data-tpl="usual">📋 Usual '+esc(info.name)+'</button>':'')+
+          '<button class="sugchip" id="tplBlank">✏️ Add exercises myself</button></div>';
+      } else {
+        var tot=ex.reduce(function(a,x){return a+(x.target||0);},0);
+        var got=ex.reduce(function(a,x){return a+Math.min(x.done||0,x.target||0);},0);
+        var pct=tot?Math.round(got/tot*100):0;
+        h+='<div class="bar'+(pct>=100?" full":"")+'"><span style="--p:'+(pct/100)+'"></span></div>'+
+          '<div class="barlabel"><span>'+(s0.finished?"Workout finished":(pct>=100?"All sets done":"Sets logged"))+'</span><span class="num">'+ex.length+' ex &middot; '+got+' / '+tot+' sets</span></div><ul class="ex">';
+        ex.forEach(function(x,i){var n=x.target||0,c=x.done||0;
+          h+='<li'+(c>=n?' data-complete="1"':'')+'><div class="exname">'+esc(x.name)+'<small>'+esc(x.scheme||"")+'</small></div><div class="sets">';
+          for(var st=1;st<=n;st++)h+='<button class="set" data-ex="'+i+'" data-s="'+st+'" aria-pressed="'+(st<=c)+'">'+st+'</button>';
+          h+='<button class="exdel" data-exdel="'+i+'" aria-label="Remove '+esc(x.name)+'">×</button>';
+          h+='</div></li>';});
+        h+='</ul>';
+      }
+      h+='<div class="sessbtns">'+
+        '<button class="btn ghost" id="addExBtn">➕ Add exercise</button>'+
+        '<button class="btn ghost" id="suggestBtn">💡 Suggest more</button>'+
+        '</div>'+
+        '<div id="suggestBox"></div>'+
+        (ex.length?'<button class="btn full '+(s0.finished?"done":"")+'" id="finishBtn" style="margin-top:10px">'+(s0.finished?"✓ Workout finished — reopen":"✅ Finish workout")+'</button>':'');
+    }
   }
   document.getElementById("trainCard").innerHTML=h;
+  Array.prototype.forEach.call(document.querySelectorAll("#trainCard .kind"),function(b){b.addEventListener("click",function(){setDayKind(k,b.dataset.kind);toast(DAY_KINDS[b.dataset.kind].name+" day");});});
+  var ck=document.getElementById("changeKind"); if(ck)ck.addEventListener("click",function(){var e=db.log[k]; if(e){delete e.kind; if(e.exercises&&!e.exercises.length)delete e.exercises;} save();drawRail();drawTrainCard();drawHome();});
+  Array.prototype.forEach.call(document.querySelectorAll("#trainCard [data-tpl]"),function(b){b.addEventListener("click",function(){applyTemplate(k,b.dataset.tpl);});});
+  var tb=document.getElementById("tplBlank"); if(tb)tb.addEventListener("click",function(){openExPicker(k);});
   var cb=document.getElementById("cardioBtn");
-  if(cb)cb.addEventListener("click",function(){var e=dayEntry(k);e.done=!e.done;save();drawRail();drawTrainCard();});
+  if(cb)cb.addEventListener("click",function(){var e=dayEntry(k);e.done=!e.done;save();drawRail();drawTrainCard();drawHome();});
   Array.prototype.forEach.call(document.querySelectorAll("#trainCard .set"),function(b){
-    b.addEventListener("click",function(){var s=session(k,dow),i=+b.dataset.ex,v=+b.dataset.s;var x=s.exercises[i];var was=x.done;x.done=(x.done===v)?v-1:v;
+    b.addEventListener("click",function(){var s=session(k),i=+b.dataset.ex,v=+b.dataset.s;var x=s.exercises[i];var was=x.done;x.done=(x.done===v)?v-1:v;
       if(x.done>was && iso(viewing)===iso(TODAY)) rtStart((db.settings&&db.settings.restSec)||90); // completing a set starts rest
       save();drawRail();drawTrainCard();});
   });
   Array.prototype.forEach.call(document.querySelectorAll("#trainCard .exdel"),function(b){
-    b.addEventListener("click",function(){var s=session(k,dow);s.exercises.splice(+b.dataset.exdel,1);save();drawRail();drawTrainCard();});
+    b.addEventListener("click",function(){var s=session(k);s.exercises.splice(+b.dataset.exdel,1);save();drawRail();drawTrainCard();});
   });
-  var ab=document.getElementById("addExBtn"); if(ab)ab.addEventListener("click",function(){openExPicker(k,dow);});
-  var sg=document.getElementById("suggestBtn"); if(sg)sg.addEventListener("click",function(){drawSuggestions(k,dow);});
-  var fb=document.getElementById("finishBtn"); if(fb)fb.addEventListener("click",function(){var s=session(k,dow);s.finished=!s.finished;save();drawRail();drawTrainCard();toast(s.finished?"Workout logged":"Reopened");});
+  var ab=document.getElementById("addExBtn"); if(ab)ab.addEventListener("click",function(){openExPicker(k);});
+  var sg=document.getElementById("suggestBtn"); if(sg)sg.addEventListener("click",function(){drawSuggestions(k);});
+  var fb=document.getElementById("finishBtn"); if(fb)fb.addEventListener("click",function(){var s=session(k);s.finished=!s.finished;save();drawRail();drawTrainCard();drawHome();toast(s.finished?"Workout logged":"Reopened");});
 }
 /* exercise picker modal */
 var exPickCtx=null;
-function openExPicker(k,dow){
-  exPickCtx={k:k,dow:dow,filter:(PROGRAM[dow].type||"upper")};
+function openExPicker(k){
+  var info=dayInfo(k), t=info&&EXLIB[info.type]?info.type:"upper";
+  exPickCtx={k:k,filter:(t==="full"?"upper":t)};
   drawExPicker();
   document.getElementById("exCustomName").value="";
   document.getElementById("exCustomSets").value="";
@@ -251,11 +300,11 @@ function openExPicker(k,dow){
 }
 function drawExPicker(){
   var f=exPickCtx.filter;
-  var filters=[["upper","Upper"],["lower","Lower"],["core","Core"]];
+  var filters=[["upper","Upper"],["lower","Lower"],["arms","Arms"],["core","Core"]];
   document.getElementById("exFilters").innerHTML=filters.map(function(x){
     return '<button data-f="'+x[0]+'"'+(f===x[0]?' class="on"':'')+'>'+x[1]+'</button>';
   }).join("");
-  var have={}; session(exPickCtx.k,exPickCtx.dow).exercises.forEach(function(x){have[x.name.toLowerCase()]=1;});
+  var have={}; session(exPickCtx.k).exercises.forEach(function(x){have[x.name.toLowerCase()]=1;});
   var pool=(EXLIB[f]||[]).filter(function(n){return !have[n.toLowerCase()];});
   document.getElementById("exChips").innerHTML=pool.length?pool.map(function(n){
     return '<button class="sugchip" data-add="'+esc(n)+'">+ '+esc(n)+'</button>';
@@ -264,7 +313,7 @@ function drawExPicker(){
     b.addEventListener("click",function(){exPickCtx.filter=b.dataset.f;drawExPicker();});
   });
   Array.prototype.forEach.call(document.querySelectorAll("#exChips .sugchip"),function(b){
-    b.addEventListener("click",function(){addExercise(exPickCtx.k,exPickCtx.dow,b.dataset.add,"3 × 10");drawExPicker();toast("Added "+b.dataset.add);});
+    b.addEventListener("click",function(){addExercise(exPickCtx.k,b.dataset.add,"3 × 10");drawExPicker();toast("Added "+b.dataset.add);});
   });
 }
 (function(){
@@ -273,53 +322,53 @@ function drawExPicker(){
     var n=document.getElementById("exCustomName").value.trim();
     var sc=document.getElementById("exCustomSets").value.trim()||"3 × 10";
     if(!n)return;
-    addExercise(exPickCtx.k,exPickCtx.dow,n,sc);
+    addExercise(exPickCtx.k,n,sc);
     document.getElementById("exCustomName").value="";document.getElementById("exCustomSets").value="";
     closeModal("exModal");
   });
 })();
 
 /* add an exercise to the day's session */
-function addExercise(k,dow,name,scheme){
-  var s=session(k,dow);
+function addExercise(k,name,scheme){
+  var s=session(k);
   s.exercises.push({name:name,scheme:scheme||"3 × 10",target:schemeTarget(scheme||"3 × 10"),done:0,added:true});
   save(); drawRail(); drawTrainCard();
 }
-/* rule-based suggestions filtered by the day's type (upper/lower), excluding what's already in */
-function suggestList(k,dow){
-  var p=PROGRAM[dow], type=p.type||"upper";
-  var have={}; session(k,dow).exercises.forEach(function(x){have[x.name.toLowerCase()]=1;});
+/* rule-based suggestions filtered by the day's focus, excluding what's already in */
+function suggestList(k){
+  var info=dayInfo(k), type=(info&&EXLIB[info.type])?info.type:"upper";
+  var have={}; session(k).exercises.forEach(function(x){have[x.name.toLowerCase()]=1;});
   var pool=(EXLIB[type]||[]).concat(EXLIB.core);
   return pool.filter(function(n){return !have[n.toLowerCase()];}).slice(0,6);
 }
-function drawSuggestions(k,dow){
+function drawSuggestions(k){
   var box=document.getElementById("suggestBox"); if(!box)return;
-  var list=suggestList(k,dow), type=(PROGRAM[dow].type||"upper");
+  var info=dayInfo(k), list=suggestList(k), type=(info&&info.type)||"upper";
   var chips=list.map(function(n){return '<button class="sugchip" data-sug="'+esc(n)+'">+ '+esc(n)+'</button>';}).join("");
-  box.innerHTML='<div class="sugwrap"><div class="eyebrow" style="margin:4px 0 8px">'+type.toUpperCase()+'-day ideas</div>'+
+  box.innerHTML='<div class="sugwrap"><div class="eyebrow" style="margin:4px 0 8px">'+esc(type.toUpperCase())+'-day ideas</div>'+
     '<div class="sugchips">'+chips+'</div>'+
     '<button class="btn ghost full" id="askCoachBtn" style="margin-top:8px">🤖 Ask coach for a smart pick</button>'+
     '<div id="askCoachOut" style="font-size:12.5px;color:var(--muted);margin-top:8px"></div></div>';
   Array.prototype.forEach.call(box.querySelectorAll(".sugchip"),function(b){
-    b.addEventListener("click",function(){addExercise(k,dow,b.dataset.sug,"3 × 10");});
+    b.addEventListener("click",function(){addExercise(k,b.dataset.sug,"3 × 10");});
   });
-  var ac=document.getElementById("askCoachBtn"); if(ac)ac.addEventListener("click",function(){askCoachSuggest(k,dow);});
+  var ac=document.getElementById("askCoachBtn"); if(ac)ac.addEventListener("click",function(){askCoachSuggest(k);});
 }
-function askCoachSuggest(k,dow){
+function askCoachSuggest(k){
   var out=document.getElementById("askCoachOut"); if(!out)return;
   if(!cfg.url||!cfg.tok){out.textContent="Connect cloud sync first (⤢) to use the AI pick.";return;}
-  var p=PROGRAM[dow]; var done=session(k,dow).exercises.map(function(x){return x.name;});
+  var info=dayInfo(k)||DAY_KINDS.full; var done=session(k).exercises.map(function(x){return x.name;});
   out.textContent="Thinking…";
   fetch(cfg.url.replace(/\/$/,"")+"/ai/suggest",{method:"POST",
     headers:{"Authorization":"Bearer "+cfg.tok,"Content-Type":"application/json"},
-    body:JSON.stringify({dayType:p.type||"upper",dayName:p.name,focus:p.focus,done:done})})
+    body:JSON.stringify({dayType:info.type||"upper",dayName:info.name,focus:info.focus,done:done})})
    .then(function(r){return r.ok?r.json():null;})
    .then(function(j){
      var s=(j&&j.suggestions)||[];
      if(!s.length){out.textContent="No pick right now — try the ideas above.";return;}
      out.innerHTML=s.map(function(x){return '<button class="sugchip" data-n="'+esc(x.name)+'" data-sc="'+esc(x.scheme||"3 × 10")+'">+ '+esc(x.name)+' <span style="opacity:.7">'+esc(x.scheme||"")+'</span></button>'+(x.why?('<div style="margin:2px 0 8px;font-size:11.5px">'+esc(x.why)+'</div>'):"");}).join("");
      Array.prototype.forEach.call(out.querySelectorAll(".sugchip"),function(b){
-       b.addEventListener("click",function(){addExercise(k,dow,b.dataset.n,b.dataset.sc);});
+       b.addEventListener("click",function(){addExercise(k,b.dataset.n,b.dataset.sc);});
      });
    })
    .catch(function(){out.textContent="Couldn't reach the coach. Try again.";});
@@ -358,7 +407,7 @@ function appleRuns(){
 function drawRuns(){
   // Manual runs (deletable) + auto runs (Strava when connected, else Apple Health; read-only), newest first.
   var manual=db.runs.map(function(x,i){return {mi:x.mi,t:x.t,d:x.d,idx:i,src:"manual"};});
-  var auto=(STRAVA.connected?STRAVA.acts.filter(isRunAct).map(function(a){return {mi:a.mi,min:a.min,d:a.date,src:"strava"};}):appleRuns()).filter(function(a){
+  var auto=(STRAVA.connected?STRAVA.acts.filter(isRunAct).map(function(a){return {mi:a.mi,min:a.min,d:a.date,src:"strava",paceSec:a.paceSec};}):appleRuns()).filter(function(a){
     // skip an auto run that duplicates a manual one on the same day (±0.3 mi)
     return !manual.some(function(mm){return mm.d===a.d && Math.abs(mm.mi-a.mi)<0.3;});
   });
@@ -369,7 +418,8 @@ function drawRuns(){
     if(x.src!=="manual"){
       var mm=Math.round(x.min);
       tstr=(mm>=60?(Math.floor(mm/60)+"h"+(mm%60)+"m"):(mm+" min"));
-      if(x.min&&x.mi){var sec=(x.min*60)/x.mi;pc=Math.floor(sec/60)+":"+String(Math.round(sec%60)).padStart(2,"0");}else{pc="—";}
+      if(x.paceSec){pc=fmtPace(x.paceSec);} // Strava's exact pace
+      else if(x.min&&x.mi){var sec=(x.min*60)/x.mi;pc=Math.floor(sec/60)+":"+String(Math.round(sec%60)).padStart(2,"0");}else{pc="—";}
     } else { tstr=x.t; pc=pace(x.mi,x.t); }
     var last=x.src!=="manual"
       ? '<td class="n"><span class="wtag" title="'+(x.src==="strava"?"Strava":"Apple Health")+'">⌚</span></td>'
@@ -436,7 +486,8 @@ function drawHealthStats(){
 }
 
 /* ---------- FOOD ---------- */
-function dtypeFor(k){ if(db.dtype[k]) return db.dtype[k]; return LIFT_DAYS[new Date(k+"T12:00:00").getDay()]?"train":"rest"; }
+// training-day macros: explicit toggle wins; else the day he logged (rest = rest); else a planned run; else the weekday default
+function dtypeFor(k){ if(db.dtype[k]) return db.dtype[k]; var info=dayInfo(k); if(info) return info.rest?"rest":"train"; if(planFor(k)) return "train"; return LIFT_DAYS[new Date(k+"T12:00:00").getDay()]?"train":"rest"; }
 var DEFAULT_TARGETS={train:{cal:1900,p:186,c:165,f:55,fib:30},rest:{cal:1825,p:185,c:150,f:55,fib:30}};
 function targets(k){ var t=dtypeFor(k); var ct=db.settings.targets; return (ct&&ct[t])?ct[t]:DEFAULT_TARGETS[t]; }
 function foodFor(k){ return db.food[k]||(db.food[k]=[]); }
@@ -1042,7 +1093,7 @@ var RUN_TYPE={easy:{n:"Easy",pace:"conversational · ~11:30–12:30/mi"},tempo:{
 function planFor(k){return PLAN_BY[k]||null;}
 function planLabel(p){return p.type==="race"?(p.note||"Race"):(RUN_TYPE[p.type].n+" "+p.mi+" mi");}
 function planShort(p){return p.type==="race"?"Race":p.type==="long"?"Long "+p.mi:p.type==="tempo"?"Tempo "+p.mi:p.type==="shake"?"Shake":"Easy "+p.mi;}
-function railLabel(k,dow){var p=planFor(k); if(p&&PROGRAM[dow].rest)return p.type==="long"?"Long":p.type==="race"?"Race":"Run"; return SHORT[dow];}
+function railLabel(k){var info=dayInfo(k); if(info)return info.short; var p=planFor(k); if(p)return p.type==="long"?"Long":p.type==="race"?"Race":"Run"; return "–";}
 function planWeekIndex(d){var s=new Date(PLAN_START+"T12:00:00"),x=new Date(d||TODAY);x.setHours(12,0,0,0);return Math.floor((x-s)/(7*86400000))+1;} // <1 = before the plan
 function planPhase(w){return w<1?"Pre-season":w<=3?"Base":w<=6?"Race tune-ups":w<=8?"Peak":w<=9?"Taper":"Race week";}
 function daysUntil(k){var a=new Date(iso(TODAY)+"T12:00:00"),b=new Date(k+"T12:00:00");return Math.round((b-a)/86400000);}
@@ -1098,6 +1149,14 @@ function drawStravaSettings(){
   else { st.textContent=STRAVA.connected===false?"Not connected. The plan won't auto-check until you connect.":"Checking…"; b.textContent="Connect Strava"; b.onclick=stravaConnect; }
 }
 
+/* what he actually lifted recently (freeform), newest first — feeds the coach */
+function recentSessions(n){
+  var out=[]; for(var i=0;i<n;i++){ var d=new Date(TODAY); d.setDate(d.getDate()-i); var k=iso(d), info=dayInfo(k); if(!info)continue;
+    var e=db.log[k]||{}; var ex=(e.exercises||[]);
+    out.push(k+" "+info.name+(info.rest?"":info.cardio?(e.done?" (done)":" (not logged)"):(" · "+ex.length+" ex · "+ex.reduce(function(a,x){return a+Math.min(x.done||0,x.target||0);},0)+" sets"+(e.finished?" · finished":"")+(ex.length?(": "+ex.map(function(x){return x.name;}).join(", ")):"")))); }
+  return out;
+}
+
 /* daily feel check-in → the coach card + chat both read it */
 var MOODS=[["wrecked","😵","Wrecked"],["tired","😴","Tired"],["good","🙂","Good"],["great","🔥","Great"]];
 var FEEL_TAGS=["sore legs","slept bad","cramping","stressed"];
@@ -1108,13 +1167,13 @@ function setFeel(mood,tags){var k=iso(TODAY);db.feel=db.feel||{};var f=db.feel[k
 function todayKey(){var k=iso(TODAY),p=planFor(k),f=feelFor(k),d=p?planDone(p):null;
   return [k,p?p.type+p.mi:"none",f?(f.mood||"")+"|"+(f.tags||[]).join(","):"",d?"done":"todo",trainStreak(),isDayDone(k,TODAY.getDay())?"lift":"",Math.round(dayTotals(k).cal/300)].join("#");}
 function todayPayload(){
-  var k=iso(TODAY),p=planFor(k),dow=TODAY.getDay(),pg=PROGRAM[dow],d=p?planDone(p):null,tot=dayTotals(k),hd=HEALTH[k]||{},m=hd.metrics||{};
+  var k=iso(TODAY),p=planFor(k),dow=TODAY.getDay(),li=dayInfo(k),d=p?planDone(p):null,tot=dayTotals(k),hd=HEALTH[k]||{},m=hd.metrics||{};
   var since=new Date(TODAY);since.setDate(since.getDate()-14);var sk=iso(since),wk=planWeekIndex();
   return {
     today:k, weekday:["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][dow], localTime:TODAY.getHours()+":"+String(TODAY.getMinutes()).padStart(2,"0"),
     plannedRun:p?{type:p.type,mi:p.mi,label:planLabel(p),note:p.note,paceGuide:RUN_TYPE[p.type].pace,done:!!d,actual:d?d.runs.map(function(a){return a.mi+" mi @ "+fmtPace(a.paceSec)+(a.hr?" · HR "+a.hr:"");}):null}:null,
     unplannedRunsToday:(!p&&runsOn(k).length)?runsOn(k).map(function(a){return a.mi+" mi @ "+fmtPace(a.paceSec);}):undefined,
-    lifting:{today:pg.rest?"Rest":pg.name,done:isDayDone(k,dow)},
+    lifting:{today:li?li.name:"not chosen yet (he picks push/pull/legs/arms/full/soccer/rest when he trains)",done:isDayDone(k),recentDays:recentSessions(10)},
     feel:feelFor(k), consecutiveTrainingDays:trainStreak(),
     planWeek:(wk>=1&&wk<=PLAN_WEEKS)?(wk+" of "+PLAN_WEEKS+" ("+planPhase(wk)+")"):(wk<1?"plan starts "+PLAN_START:"plan complete"),
     thisWeek:thisWeekPlan().filter(function(x){return x.p;}).map(function(x){return x.k+" "+planLabel(x.p)+(x.done?" (done)":"");}),
@@ -1161,9 +1220,9 @@ function drawRun(){
     return '<div class="racechip'+(r.goal?" goal":"")+(r===next?" next":"")+'"><div class="rc-n">'+(r.goal?"🏁 ":"")+esc(r.name)+'</div><div class="rc-d">'+niceDate(r.d)+' · <b>'+(du===0?"today":du<0?"done":"in "+du+"d")+'</b></div></div>';}).join("")+'</div>';
   var prog='<div class="planprog"><div class="pp-l"><span>'+(wk<1?"Plan starts Mon Sep 21":wk>PLAN_WEEKS?"Plan complete":"Week "+wk+" of "+PLAN_WEEKS+" · "+planPhase(wk))+'</span><span class="num">'+daysUntil(goal.d)+'d to the Half</span></div><div class="bar" style="margin:8px 0 0"><span style="--p:'+(pct/100)+'"></span></div></div>';
   // today card
-  var dow=TODAY.getDay(),pg=PROGRAM[dow];
+  var li=dayInfo(k);
   var title=p?planLabel(p):"No run today";
-  var sub=p?(RUN_TYPE[p.type].pace+(p.note&&p.type!=="race"?" · "+p.note:"")):(pg.rest?"Nothing on the plan. Recover.":(pg.name+" day. Legs today, miles another day."));
+  var sub=p?(RUN_TYPE[p.type].pace+(p.note&&p.type!=="race"?" · "+p.note:"")):(li&&!li.rest?(li.name+" day on the Train tab. Miles another day."):"Nothing on the run plan. Recover, or pick a lift on Train.");
   var status;
   if(d){var a=d.runs[0];status='<div class="runstat done"><span class="chk pop">✓</span><div><b>Done</b> · '+d.mi.toFixed(2)+' mi @ '+fmtPace(a.paceSec)+(a.hr?' · ♥ '+a.hr:'')+'<small>from Strava · '+esc(a.name)+'</small></div></div>';}
   else if(p){status='<div class="runstat"><span class="chk"></span><div><b>Planned</b> · '+p.mi+' mi<small>'+(conn===false?"connect Strava to auto-check":"checks itself off when Strava sees it")+'</small></div></div>';}
@@ -1175,10 +1234,11 @@ function drawRun(){
     '<div class="focus">'+esc(sub)+'</div>'+status+'<div id="coachCard" class="coachcard"></div>'+feel+'</article>';
   // this week (Mon–Sun) + selected-day detail
   var wkp=thisWeekPlan(),sel=runSel||k;
-  var rail='<div class="runrail">'+wkp.map(function(x){var lab=x.p?planShort(x.p):(PROGRAM[x.dow].rest?"":PROGRAM[x.dow].name);
+  var rail='<div class="runrail">'+wkp.map(function(x){var di=dayInfo(x.k);var lab=x.p?planShort(x.p):(di&&!di.rest?di.short:"");
     return '<button class="rday'+(x.p?" plan":"")+(x.done?" done":"")+(x.k===k?" today":"")+(x.k===sel?" sel":"")+(x.p&&x.p.type==="race"?" race":"")+'" data-rday="'+x.k+'"><span class="dl">'+LET[x.dow]+'</span><span class="dn num">'+(+x.k.slice(8))+'</span><span class="dt">'+esc(lab||"–")+'</span>'+(x.done?'<span class="rdot"></span>':'')+'</button>';}).join("")+'</div>';
   var sd=wkp.filter(function(x){return x.k===sel;})[0]||wkp[0];
-  var detail='<div class="rdetail">'+(sd.p?('<b>'+esc(planLabel(sd.p))+'</b> · '+esc(RUN_TYPE[sd.p.type].pace)+(sd.p.note&&sd.p.type!=="race"?'<br><span style="color:var(--muted)">'+esc(sd.p.note)+'</span>':'')):('<b>'+(PROGRAM[sd.dow].rest?"No run":PROGRAM[sd.dow].name+" day")+'</b> · <span style="color:var(--muted)">'+esc(PROGRAM[sd.dow].focus)+'</span>'))+
+  var sdi=dayInfo(sd.k);
+  var detail='<div class="rdetail">'+(sd.p?('<b>'+esc(planLabel(sd.p))+'</b> · '+esc(RUN_TYPE[sd.p.type].pace)+(sd.p.note&&sd.p.type!=="race"?'<br><span style="color:var(--muted)">'+esc(sd.p.note)+'</span>':'')):('<b>'+(sdi&&!sdi.rest?sdi.name+" day":"No run")+'</b> · <span style="color:var(--muted)">'+esc(sdi?sdi.focus:"Nothing logged. Recovery counts.")+'</span>'))+
     (sd.runs.length?'<div style="margin-top:7px">'+sd.runs.map(function(a){return '<span class="pill">✓ '+a.mi.toFixed(1)+' mi @ '+fmtPace(a.paceSec)+'</span>';}).join(" ")+'</div>':'')+'</div>';
   // weekly mileage (8 weeks, Mon-start)
   var wm=weekMiles(8),mx=Math.max(1,Math.max.apply(null,wm.map(function(w){return w.mi;}))),thisW=wm[wm.length-1],lastW=wm[wm.length-2];
@@ -1186,7 +1246,7 @@ function drawRun(){
     '<div class="wkline"><span><b class="num">'+thisW.mi+'</b> mi this week · '+thisW.runs+' run'+(thisW.runs===1?"":"s")+'</span><span style="color:var(--muted)">last week '+lastW.mi+'</span></div></section>';
   // recent runs from Strava (+ what else he did this week)
   var recent=STRAVA.acts.filter(isRunAct).slice(0,8);
-  var other=(function(){var ws=iso(weekStartMon(TODAY)),c={};STRAVA.acts.forEach(function(a){if(a.date<ws||isRunAct(a)||!isTrainAct(a))return;c[a.type]=(c[a.type]||0)+1;});
+  var other=(function(){var ws=iso(weekStartMon(TODAY)),c={};STRAVA.acts.forEach(function(a){if(a.date<ws||/run/.test(actType(a))||!isTrainAct(a))return;c[a.type]=(c[a.type]||0)+1;});
     return Object.keys(c).map(function(t){return c[t]+" "+t.replace(/([a-z])([A-Z])/g,"$1 $2").toLowerCase();}).join(" · ");})();
   var rec='<section class="panel"><h3>Recent runs · Strava</h3>'+(recent.length?'<div class="runlist">'+recent.map(function(a){return '<div class="runrow"><div class="rr-l"><b>'+a.mi.toFixed(2)+' mi</b><small>'+esc(a.name)+' · '+niceDate(a.date)+'</small></div><div class="rr-r num">'+fmtPace(a.paceSec)+'<small>'+fmtMin(a.min)+(a.hr?' · ♥ '+a.hr:'')+'</small></div></div>';}).join("")+'</div>'
     :(conn===null?'<div class="skel" style="height:44px;margin-bottom:8px">&nbsp;</div><div class="skel" style="height:44px">&nbsp;</div>':'<div class="empty">'+(conn===false?"Connect Strava (⤢ settings) to pull your runs.":"No runs in the last 70 days.")+'</div>'))+
@@ -1220,13 +1280,14 @@ function drawHome(){
   var eatBack=!!db.settings.eatBack, calTarget=tg.cal+(eatBack?burned:0);
   var remain=calTarget-Math.round(tot.cal), pRemain=tg.p-Math.round(tot.p);
   var over=remain<0;
-  // today's workout
-  var dow=TODAY.getDay(), p=PROGRAM[dow], woV;
-  if(p.rest){ woV="Rest from lifting"; }
-  else if(p.cardio){ var e=db.log[k]; woV=p.name+(e&&e.done?" · done ✓":" · not logged"); }
-  else { var s=session(k,dow), dn=s.exercises.reduce(function(a,x){return a+Math.min(x.done||0,x.target||0);},0),
+  // today's workout (freeform: whatever he picked, or nothing yet)
+  var li=dayInfo(k), woV;
+  if(!li){ woV="Not picked yet · tap to start"; }
+  else if(li.rest){ woV="Rest from lifting"; }
+  else if(li.cardio){ var e=db.log[k]; woV=li.name+(e&&e.done?" · done ✓":" · not logged"); }
+  else { var s=session(k), dn=s.exercises.reduce(function(a,x){return a+Math.min(x.done||0,x.target||0);},0),
         tt=s.exercises.reduce(function(a,x){return a+(x.target||0);},0);
-        woV=p.name+" · "+dn+"/"+tt+" sets"+(isDayDone(k,dow)?" ✓":""); }
+        woV=li.name+(tt?(" · "+dn+"/"+tt+" sets"):" · add exercises")+(isDayDone(k)?" ✓":""); }
   // today's run (plan + Strava + coach card)
   var rp=planFor(k), rd=rp?planDone(rp):null, bonus=(!rp&&runsOn(k).length)?runsOn(k)[0]:null;
   var rV=rp?(planLabel(rp)+(rd?" · done ✓ "+fmtPace(rd.runs[0].paceSec):" · planned")):(bonus?("Bonus run · "+bonus.mi.toFixed(1)+" mi @ "+fmtPace(bonus.paceSec)):"No run on the plan");
@@ -1314,26 +1375,19 @@ function coachContext(){
   var eatBack=!!db.settings.eatBack, calTarget=tg.cal+(eatBack?burned:0);
   var w=db.weights.slice().sort(function(a,b){return a.d<b.d?-1:1;});
   var curWeight=w.length?w[w.length-1].v:START;
-  // full weekly split from the program
-  var split={};
-  for(var d=0;d<7;d++){ var pp=PROGRAM[d]; var dn=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d];
-    split[dn]=pp.rest?"Rest":(pp.cardio?pp.name:(pp.name+": "+pp.ex.map(function(e){return e[0]+" "+e[1];}).join(", ")+(pp.optional?" (optional)":""))); }
-  var dow=TODAY.getDay(), p=PROGRAM[dow];
-  var todayW = p.rest ? {type:"Rest day", focus:p.focus}
-             : p.cardio ? {type:p.name, focus:p.focus}
-             : {name:p.name, type:p.type, focus:p.focus, plannedExercises:p.ex.map(function(e){return e[0]+" "+e[1];})};
-  // what he's ACTUALLY done/edited today (flexible session)
-  if(!p.rest && !p.cardio){
-    var le=db.log[k];
-    if(le&&le.exercises){ todayW.actualSession=le.exercises.map(function(x){return x.name+" "+(x.done||0)+"/"+(x.target||0)+" sets";}); todayW.finished=!!le.finished; }
-  }
+  // lifting is freeform: what he picked + logged today, and what he actually trained recently
+  var li=dayInfo(k), le=db.log[k]||{};
+  var todayW = !li ? {type:"Not chosen yet", note:"He picks Push / Pull / Legs / Shoulders & Arms / Full body / Soccer / Rest when he trains; nothing is prescribed by weekday."}
+             : li.rest ? {type:"Rest day"}
+             : li.cardio ? {type:li.name, done:!!le.done}
+             : {name:li.name, focusArea:li.type, session:(le.exercises||[]).map(function(x){return x.name+" "+(x.done||0)+"/"+(x.target||0)+" sets"+(x.scheme?" ("+x.scheme+")":"");}), finished:!!le.finished};
   return {
     today:k, trainingDay:dtypeFor(k), goal:"247 -> 195 lb cut",
     profile:{ startWeight:START, goalWeight:195, currentWeight:curWeight,
       meetBests:{squat:485,bench:309,deadlift:562}, gymLifts:{squat1RM:385,bench1RM:260},
-      training:"The Cut program: lifts 3-4x/week (squat/bench/deadlift focus) + Wednesday soccer for conditioning. Cut targets ~1900 kcal/186g protein training days, 1825/185 rest days." },
+      training:"Freeform lifting 3-4x/week: he picks the kind of day (push/pull/legs/shoulders&arms/full) and logs exercises as he goes. Soccer usually Wednesday. Running plan lives on the Run tab. Cut targets ~1900 kcal/186g protein training days, 1825/185 rest days." },
     todayWorkout:todayW,
-    weeklySplit:split,
+    recentSessions:recentSessions(10),
     calories:{eaten:Math.round(tot.cal),target:calTarget,remaining:calTarget-Math.round(tot.cal)},
     protein:{eaten:Math.round(tot.p),target:tg.p,remaining:tg.p-Math.round(tot.p)},
     carbs:{eaten:Math.round(tot.c),target:tg.c,remaining:tg.c-Math.round(tot.c)},
@@ -1442,10 +1496,10 @@ document.getElementById("coachTone").addEventListener("click",function(){db.sett
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=34").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=35").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=34; // bump this + version.json + ?v= on every release
+var APPVER=35; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
