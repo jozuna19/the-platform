@@ -1354,7 +1354,9 @@ renderAll();
 setSync(cfg.url&&cfg.tok?"ok":"");
 if(cfg.url&&cfg.tok){ pull(function(){renderAll();coachToday(false);}); pullHealth(); pullStrava(false); }
 // keep Apple Health fresh: on foreground, on Food tab, and every 60s
-document.addEventListener("visibilitychange",function(){if(!document.hidden){pullHealth();pullStrava(false);}});
+document.addEventListener("visibilitychange",function(){if(!document.hidden){rollDay();pullHealth();pullStrava(false);}});
+function rollDay(){ var n=new Date(); if(iso(n)===iso(TODAY))return; var wasToday=iso(viewing)===iso(TODAY); TODAY=n; if(wasToday){viewing=new Date(n);viewing.setHours(0,0,0,0);} runSel=null; drawDateBar(); renderAll(); }
+setInterval(rollDay,60000);
 var foodTab=document.querySelector('.tab[data-view="food"]'); if(foodTab)foodTab.addEventListener("click",pullHealth);
 setInterval(pullHealth,60000);
 setInterval(function(){pullStrava(false);},5*60000);
@@ -1369,6 +1371,7 @@ function mdlite(s){ return String(s)
   .replace(/\*\*(.+?)\*\*/g,"$1").replace(/__(.+?)__/g,"$1")
   .replace(/`(.+?)`/g,"$1")
   .replace(/^#{1,6}\s*/gm,"").replace(/^\s*[-*]\s+/gm,"• "); }
+function stamp(ms){ return new Date(ms).toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}); }
 function coachContext(){
   var k=iso(TODAY), tg=targets(k), tot=dayTotals(k);
   var hd=HEALTH[k]||{}; var burned=Math.round(hd.kcalToday||0);
@@ -1382,6 +1385,7 @@ function coachContext(){
              : li.cardio ? {type:li.name, done:!!le.done}
              : {name:li.name, focusArea:li.type, session:(le.exercises||[]).map(function(x){return x.name+" "+(x.done||0)+"/"+(x.target||0)+" sets"+(x.scheme?" ("+x.scheme+")":"");}), finished:!!le.finished};
   return {
+    now:stamp(Date.now())+" (America/New_York). This is the CURRENT date and time. User messages are prefixed with the time John sent them.",
     today:k, trainingDay:dtypeFor(k), goal:"247 -> 195 lb cut",
     profile:{ startWeight:START, goalWeight:195, currentWeight:curWeight,
       meetBests:{squat:485,bench:309,deadlift:562}, gymLifts:{squat1RM:385,bench1RM:260},
@@ -1470,18 +1474,18 @@ function coachSend(){
   if(coachBusy)return;
   var ta=document.getElementById("coachText"), text=ta.value.trim(); if(!text)return;
   if(!cfg.url||!cfg.tok){ db.chat.push({role:"bot",content:"Connect cloud sync first (⤢ up top) — the coach runs through your synced backend."}); coachRender(); return; }
-  db.chat.push({role:"user",content:text}); ta.value=""; ta.style.height="auto";
+  db.chat.push({role:"user",content:text,ts:Date.now()}); ta.value=""; ta.style.height="auto";
   coachBusy=true; coachRender();
   var box=document.getElementById("coachMsgs");
   var think=document.createElement("div"); think.className="cmsg think"; think.textContent="Rocky is thinking…"; box.appendChild(think); box.scrollTop=box.scrollHeight;
-  var apiMsgs=db.chat.filter(function(m){return m.role==="user"||m.role==="assistant";}).map(function(m){return {role:m.role==="assistant"?"assistant":"user",content:m.content};});
+  var apiMsgs=db.chat.filter(function(m){return m.role==="user"||m.role==="assistant";}).map(function(m){return {role:m.role==="assistant"?"assistant":"user",content:(m.role==="user"&&m.ts?("["+stamp(m.ts)+"] "):"")+m.content};});
   fetch(cfg.url.replace(/\/$/,"")+"/ai/chat",{method:"POST",
     headers:{"Authorization":"Bearer "+cfg.tok,"Content-Type":"application/json"},
     body:JSON.stringify({messages:apiMsgs,context:coachContext(),memory:db.memory,tone:coachTone()})})
    .then(function(r){return r.ok?r.json():r.text().then(function(t){throw new Error(t);});})
    .then(function(out){
-     if(out.reply) db.chat.push({role:"assistant",content:out.reply});
-     (out.actions||[]).forEach(function(a){ var note=coachApply(a); if(note) db.chat.push({role:"act",content:note}); });
+     if(out.reply) db.chat.push({role:"assistant",content:out.reply,ts:Date.now()});
+     (out.actions||[]).forEach(function(a){ var note=coachApply(a); if(note) db.chat.push({role:"act",content:note,ts:Date.now()}); });
      save(); coachBusy=false; coachRender(); drawCoachStrip();
    })
    .catch(function(e){ coachBusy=false; db.chat.push({role:"bot",content:"Something went wrong reaching the coach. Try again."}); coachRender(); });
@@ -1496,10 +1500,10 @@ document.getElementById("coachTone").addEventListener("click",function(){db.sett
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=37").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=38").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=37; // bump this + version.json + ?v= on every release
+var APPVER=38; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
