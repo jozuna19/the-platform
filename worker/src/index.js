@@ -125,6 +125,7 @@ You can take actions with tools:
 - log_weight: record a bodyweight in lb.
 - log_lift: record a strength set (lift name, weight lb, reps).
 - remember: save a durable fact about John for the future (injuries, preferences, goals, schedule). Use this whenever he tells you something worth remembering long-term.
+- edit_plan / edit_race: when he asks to change his running plan or a race (move a run, change miles, add or drop one, fix a race date), DO IT with the tool using CONTEXT.running.fullPlan dates, then confirm in one line what changed. Keep the plan sane: no more than three runs a week unless he insists, long run stays on a weekend unless he says otherwise, keep the taper before the Half.
 - log_feel: record how he feels today (wrecked / tired / good / great, plus tags like sore legs, slept bad, cramping) when he tells you. The run coach card uses it.
 - web_search: you have live web access. Use it whenever he asks you to look something up, verify a claim, find products/prices/races/places, compare options, or "research" something, and any time a fact is time-sensitive or you are not sure. For a "research" or "deep dive" request, run several searches, cross-check, and give him a tight brief. Always end a web-backed answer with a "Sources:" line listing the plain URLs you used (one per line, no markdown). Never invent a URL.
 
@@ -139,9 +140,11 @@ const CHAT_TOOLS = [
   { name: "log_weight", description: "Record John's bodyweight for today.", input_schema: { type: "object", properties: { lb: {type:"number"} }, required:["lb"] } },
   { name: "log_lift", description: "Record a strength set.", input_schema: { type: "object", properties: { lift:{type:"string"}, wt:{type:"number"}, reps:{type:"number"} }, required:["lift","wt","reps"] } },
   { name: "remember", description: "Save a durable fact about John for future conversations.", input_schema: { type: "object", properties: { note:{type:"string"} }, required:["note"] } },
+  { name: "edit_plan", description: "Change John's running plan: add, resize, move, or remove runs by date. He sees the change instantly on the Run tab.", input_schema: { type:"object", properties:{ changes:{ type:"array", items:{ type:"object", properties:{ date:{type:"string",description:"YYYY-MM-DD of the run to change or add"}, type:{type:"string",enum:["easy","tempo","long","race","shake"]}, mi:{type:"number"}, note:{type:"string"}, moveTo:{type:"string",description:"YYYY-MM-DD to move this run to"}, remove:{type:"boolean"} }, required:["date"] } } }, required:["changes"] } },
+  { name: "edit_race", description: "Add, fix, or remove a race on John's calendar (name is the key).", input_schema: { type:"object", properties:{ name:{type:"string"}, date:{type:"string"}, where:{type:"string"}, dist:{type:"string"}, goal:{type:"boolean"}, done:{type:"boolean"}, result:{type:"string"}, remove:{type:"boolean"} }, required:["name"] } },
   { name: "log_feel", description: "Record how John feels today for the run coach.", input_schema: { type: "object", properties: { mood:{type:"string", enum:["wrecked","tired","good","great"]}, tags:{type:"array", items:{type:"string"}} }, required:["mood"] } },
 ];
-const CLIENT_TOOLS = { log_food:1, log_weight:1, log_lift:1, remember:1, log_feel:1 };
+const CLIENT_TOOLS = { log_food:1, log_weight:1, log_lift:1, remember:1, log_feel:1, edit_plan:1, edit_race:1 };
 
 // Coach-facing calls (chat + today card) can run on a stronger model than food parsing.
 function coachModel(env) { return env.COACH_MODEL || env.AI_MODEL || "claude-haiku-4-5-20251001"; }

@@ -61,6 +61,8 @@ db.memory=db.memory||[]; // durable facts the coach remembers
 db.recipes=db.recipes||[]; // saved recipes (per-serving macros)
 db.feel=db.feel||{};       // daily check-in {date:{mood,tags,ts}} the run coach reads
 db.coachToday=db.coachToday||{}; // cached run-coach card per day {date:{key,headline,why,call,ts}}
+db.runPlan=db.runPlan||{};   // plan edits by date: {type,mi,note} to override/add, or {removed:true}
+db.races=db.races||{};       // race edits by name: {d,where,dist,goal,done,result} or {removed:true}
 if(db.health){delete db.health;} // health now lives server-side in its own store
 var HEALTH={}; // Apple Health data, read-only from the backend (never synced up)
 try{ cfg=JSON.parse(localStorage.getItem(CFGKEY))||{}; }catch(e){ cfg={}; }
@@ -111,7 +113,7 @@ function pull(cb){
        db.runs=db.runs||[];db.food=db.food||{};db.dtype=db.dtype||{};db.meta=db.meta||{updated:0};
        db.settings=db.settings||{eatBack:false};db.meals=db.meals||[];
        db.chat=db.chat||[];db.memory=db.memory||[];db.recipes=db.recipes||[];
-       db.feel=db.feel||{};db.coachToday=db.coachToday||{};
+       db.feel=db.feel||{};db.coachToday=db.coachToday||{};db.runPlan=db.runPlan||{};db.races=db.races||{};
        localSave();
      }
      synced=true;
@@ -1089,8 +1091,18 @@ var RUN_PLAN=[
   ["2026-11-23","easy",3],["2026-11-24","shake",2,"shakeout"],["2026-11-26","race",13.1,"Thanksgiving Half"]
 ].map(function(r){return {d:r[0],type:r[1],mi:r[2],note:r[3]||""};});
 var PLAN_BY={}; RUN_PLAN.forEach(function(p){PLAN_BY[p.d]=p;});
+// The base plan + John's / Rocky's edits (db.runPlan, synced). Edits win; {removed:true} hides a base run.
+function allPlan(){ var out={}; RUN_PLAN.forEach(function(p){out[p.d]=p;});
+  Object.keys(db.runPlan||{}).forEach(function(d){var o=db.runPlan[d]; if(!o)return; if(o.removed){delete out[d];return;} out[d]={d:d,type:o.type||(out[d]&&out[d].type)||"easy",mi:+o.mi||(out[d]&&out[d].mi)||3,note:o.note!=null?o.note:((out[d]&&out[d].note)||""),edited:true};});
+  return Object.keys(out).sort().map(function(d){return out[d];}); }
+function editPlan(d,change){ db.runPlan=db.runPlan||{}; if(change===null||(change&&change.removed)) db.runPlan[d]={removed:true}; else { var cur=planFor(d)||{}; db.runPlan[d]={type:change.type||cur.type||"easy",mi:change.mi!=null?+change.mi:(cur.mi||3),note:change.note!=null?String(change.note):(cur.note||"")}; }
+  save(); drawRun(); drawRail(); drawTrainCard(); drawHome(); }
+function racesAll(){ var out={}; RACES.forEach(function(r){out[r.name]=r;});
+  Object.keys(db.races||{}).forEach(function(n){var o=db.races[n]; if(!o)return; if(o.removed){delete out[n];return;} out[n]=Object.assign({name:n},out[n]||{},o);});
+  return Object.keys(out).map(function(n){return out[n];}).sort(function(x,y){return x.d<y.d?-1:1;}); }
+function editRace(name,change){ db.races=db.races||{}; db.races[name]=change===null?{removed:true}:Object.assign({},db.races[name]||{},change); save(); drawRun(); drawHome(); }
 var RUN_TYPE={easy:{n:"Easy",pace:"conversational · ~11:30–12:30/mi"},tempo:{n:"Tempo",pace:"comfortably hard in the work · ~10:00–10:30/mi"},long:{n:"Long run",pace:"easy pace · slower is fine"},race:{n:"Race",pace:"run it, enjoy it"},shake:{n:"Shakeout",pace:"very easy"}};
-function planFor(k){return PLAN_BY[k]||null;}
+function planFor(k){var o=(db.runPlan||{})[k]; if(o){ if(o.removed)return null; var b=PLAN_BY[k]||{}; return {d:k,type:o.type||b.type||"easy",mi:o.mi!=null?+o.mi:(b.mi||3),note:o.note!=null?o.note:(b.note||""),edited:true}; } return PLAN_BY[k]||null;}
 function planLabel(p){return p.type==="race"?(p.note||"Race"):(RUN_TYPE[p.type].n+" "+p.mi+" mi");}
 function planShort(p){return p.type==="race"?"Race":p.type==="long"?"Long "+p.mi:p.type==="tempo"?"Tempo "+p.mi:p.type==="shake"?"Shake":"Easy "+p.mi;}
 function railLabel(k){var info=dayInfo(k); if(info)return info.short; var p=planFor(k); if(p)return p.type==="long"?"Long":p.type==="race"?"Race":"Run"; return "–";}
@@ -1181,7 +1193,7 @@ function todayPayload(){
     recentActivities:STRAVA.acts.filter(function(a){return a.date>=sk;}).map(function(a){return {date:a.date,type:a.type,mi:a.mi,min:a.min,pace:a.paceSec?fmtPace(a.paceSec):null,hr:a.hr,name:a.name,glitch:isGlitch(a)||undefined};}),
     foodToday:{kcal:Math.round(tot.cal),protein:Math.round(tot.p),itemsLogged:foodFor(k).length},
     health:{steps:m.steps!=null?Math.round(m.steps):null,moveKcal:m.move!=null?Math.round(m.move):null,workoutKcal:Math.round(hd.kcalToday||0)},
-    upcomingRaces:RACES.filter(function(r){return !r.done&&r.d>=k;}).map(function(r){return r.name+" · "+r.d+" · in "+daysUntil(r.d)+"d"+(r.goal?" (GOAL)":"");}),
+    upcomingRaces:racesAll().filter(function(r){return !r.done&&r.d>=k;}).map(function(r){return r.name+" · "+r.d+" · in "+daysUntil(r.d)+"d"+(r.goal?" (GOAL)":"");}),
     memory:db.memory.slice(-12)
   };
 }
@@ -1210,13 +1222,33 @@ function renderTodayCoach(c){
 }
 
 var runSel=null; // day selected in the plan rail (iso); null = today
+function openPlanEditor(d){
+  var p=d?planFor(d):null, isNew=!p;
+  document.getElementById("fmTitle").textContent=isNew?"Add a run":"Edit run";
+  var types=Object.keys(RUN_TYPE).map(function(t){return '<option value="'+t+'"'+((p?p.type:"easy")===t?' selected':'')+'>'+RUN_TYPE[t].n+'</option>';}).join("");
+  document.getElementById("fmBody").innerHTML=
+    '<label class="eyebrow">Date</label><input id="peDate" type="date" value="'+(d||iso(TODAY))+'" style="width:100%;margin:6px 0 12px">'+
+    '<div class="amtrow" style="margin:0 0 12px"><select id="peType" style="flex:1.4">'+types+'</select><input id="peMi" type="number" step="0.5" min="0.5" placeholder="miles" value="'+(p?p.mi:"")+'" style="flex:1"></div>'+
+    '<input id="peNote" placeholder="note (optional)" value="'+esc(p?p.note:"")+'" style="width:100%;margin-bottom:12px">'+
+    '<button class="btn full" id="peSave">'+(isNew?"Add run":"Save")+'</button>'+
+    (isNew?'':'<button class="btn ghost full" id="peRemove" style="margin-top:8px">Remove this run</button>');
+  openModal("foodModal");
+  document.getElementById("peSave").addEventListener("click",function(){
+    var nd=document.getElementById("peDate").value, mi=parseFloat(document.getElementById("peMi").value);
+    if(!nd||isNaN(mi)){toast("Need a date and miles");return;}
+    if(d&&nd!==d) editPlan(d,null); // moved to another day
+    editPlan(nd,{type:document.getElementById("peType").value,mi:mi,note:document.getElementById("peNote").value.trim()});
+    closeModal("foodModal"); toast(isNew?"Run added":"Plan updated");
+  });
+  var rm=document.getElementById("peRemove"); if(rm)rm.addEventListener("click",function(){editPlan(d,null);closeModal("foodModal");toast("Run removed");});
+}
 function drawRun(){
   var box=document.getElementById("runBody"); if(!box)return;
   var k=iso(TODAY),p=planFor(k),d=p?planDone(p):null,wk=planWeekIndex(),conn=STRAVA.connected;
-  var goal=RACES.filter(function(r){return r.goal;})[0],next=RACES.filter(function(r){return !r.done&&r.d>=k;})[0];
+  var goal=racesAll().filter(function(r){return r.goal;})[0],next=racesAll().filter(function(r){return !r.done&&r.d>=k;})[0];
   // race strip + plan progress
   var pct=Math.max(0,Math.min(100,Math.round(((wk-1)/PLAN_WEEKS)*100)));
-  var strip='<div class="racestrip">'+RACES.filter(function(r){return !r.done;}).map(function(r){var du=daysUntil(r.d);
+  var strip='<div class="racestrip">'+racesAll().filter(function(r){return !r.done;}).map(function(r){var du=daysUntil(r.d);
     return '<div class="racechip'+(r.goal?" goal":"")+(r===next?" next":"")+'"><div class="rc-n">'+(r.goal?"🏁 ":"")+esc(r.name)+'</div><div class="rc-d">'+niceDate(r.d)+' · <b>'+(du===0?"today":du<0?"done":"in "+du+"d")+'</b></div></div>';}).join("")+'</div>';
   var prog='<div class="planprog"><div class="pp-l"><span>'+(wk<1?"Plan starts Mon Sep 21":wk>PLAN_WEEKS?"Plan complete":"Week "+wk+" of "+PLAN_WEEKS+" · "+planPhase(wk))+'</span><span class="num">'+daysUntil(goal.d)+'d to the Half</span></div><div class="bar" style="margin:8px 0 0"><span style="--p:'+(pct/100)+'"></span></div></div>';
   // today card
@@ -1252,17 +1284,20 @@ function drawRun(){
     :(conn===null?'<div class="skel" style="height:44px;margin-bottom:8px">&nbsp;</div><div class="skel" style="height:44px">&nbsp;</div>':'<div class="empty">'+(conn===false?"Connect Strava (⤢ settings) to pull your runs.":"No runs in the last 70 days.")+'</div>'))+
     (other?'<div class="empty" style="padding-top:10px">Also this week: '+esc(other)+'</div>':'')+'</section>';
   // full plan, grouped by week
-  var byWeek={};RUN_PLAN.forEach(function(q){var w=planWeekIndex(new Date(q.d+"T12:00:00"));(byWeek[w]=byWeek[w]||[]).push(q);});
-  var doneN=RUN_PLAN.filter(function(q){return planDone(q);}).length;
-  var plan='<details class="panel planfull"'+(wk>=1&&wk<=PLAN_WEEKS?"":" open")+'><summary><h3 style="margin:0;display:inline">Full plan · 10 weeks</h3><span class="sum-r">'+doneN+' / '+RUN_PLAN.length+' done</span></summary>'+
+  var plist=allPlan(); var byWeek={};plist.forEach(function(q){var w=planWeekIndex(new Date(q.d+"T12:00:00"));(byWeek[w]=byWeek[w]||[]).push(q);});
+  var doneN=plist.filter(function(q){return planDone(q);}).length;
+  var plan='<details class="panel planfull"'+(wk>=1&&wk<=PLAN_WEEKS?"":" open")+'><summary><h3 style="margin:0;display:inline">Full plan · 10 weeks</h3><span class="sum-r">'+doneN+' / '+plist.length+' done</span></summary>'+
     Object.keys(byWeek).map(function(w){return '<div class="pw'+(+w===wk?" cur":"")+'"><div class="pw-h">Week '+w+' <span>'+planPhase(+w)+'</span></div>'+byWeek[w].map(function(q){var dn=planDone(q);
-      return '<div class="pw-r'+(dn?" done":"")+(q.d===k?" today":"")+'"><span class="chk">'+(dn?"✓":"")+'</span><span class="pw-d">'+niceDate(q.d,{weekday:"short",month:"numeric",day:"numeric"})+'</span><span class="pw-l">'+esc(planLabel(q))+'</span>'+(dn?'<span class="pw-a num">'+dn.mi.toFixed(1)+' mi</span>':'')+'</div>';}).join("")+'</div>';}).join("")+'</details>';
+      return '<button class="pw-r'+(dn?" done":"")+(q.d===k?" today":"")+'" data-edit="'+q.d+'"><span class="chk">'+(dn?"✓":"")+'</span><span class="pw-d">'+niceDate(q.d,{weekday:"short",month:"numeric",day:"numeric"})+'</span><span class="pw-l">'+esc(planLabel(q))+(q.edited?' <span class="pw-e">edited</span>':'')+'</span>'+(dn?'<span class="pw-a num">'+dn.mi.toFixed(1)+' mi</span>':'<span class="pw-a" style="color:var(--muted)">›</span>')+'</button>';}).join("")+'</div>';}).join("")+
+    '<button class="btn ghost full" id="addRunBtn" style="margin-top:12px">➕ Add a run</button><p class="empty" style="padding:8px 0 0">Tap any run to change it. You can also just tell Rocky ("move Thursday to Friday", "make Saturday 5 miles").</p></details>';
   var connect=conn===false?'<article class="card" style="border-left-color:#FC4C02"><div class="head"><h2>Connect Strava</h2></div><p style="font-size:13px;color:var(--muted);margin:10px 0 14px">Your watch already logs every run to Strava. Connect once and the plan checks itself off, the coach sees your real paces, and nothing gets typed twice.</p><button class="btn full" id="stravaConnectBtn" style="background:#FC4C02;border-color:#FC4C02;color:#fff">Connect Strava</button></article>':'';
   box.innerHTML=strip+prog+today+rail+detail+bars+rec+plan+connect;
   Array.prototype.forEach.call(box.querySelectorAll(".mood"),function(b){b.addEventListener("click",function(){setFeel(b.dataset.mood,null);});});
   Array.prototype.forEach.call(box.querySelectorAll(".ftag"),function(b){b.addEventListener("click",function(){var cur=feelFor(k)||{tags:[]};var t=(cur.tags||[]).slice();var i=t.indexOf(b.dataset.tag);if(i>=0)t.splice(i,1);else t.push(b.dataset.tag);setFeel(null,t);});});
   Array.prototype.forEach.call(box.querySelectorAll(".rday"),function(b){b.addEventListener("click",function(){runSel=b.dataset.rday;drawRun();});});
   var cb=document.getElementById("stravaConnectBtn"); if(cb)cb.addEventListener("click",stravaConnect);
+  Array.prototype.forEach.call(box.querySelectorAll("[data-edit]"),function(b){b.addEventListener("click",function(){openPlanEditor(b.dataset.edit);});});
+  var ar=document.getElementById("addRunBtn"); if(ar)ar.addEventListener("click",function(){openPlanEditor(null);});
   var c=(db.coachToday||{})[k]; if(c)renderTodayCoach(c); else if(!STRAVA.fetchedAt)renderTodayCoach(null); else coachToday(false);
 }
 
@@ -1292,7 +1327,7 @@ function drawHome(){
   var rp=planFor(k), rd=rp?planDone(rp):null, bonus=(!rp&&runsOn(k).length)?runsOn(k)[0]:null;
   var rV=rp?(planLabel(rp)+(rd?" · done ✓ "+fmtPace(rd.runs[0].paceSec):" · planned")):(bonus?("Bonus run · "+bonus.mi.toFixed(1)+" mi @ "+fmtPace(bonus.paceSec)):"No run on the plan");
   var cc=(db.coachToday||{})[k];
-  var goal=RACES.filter(function(r){return r.goal;})[0];
+  var goal=racesAll().filter(function(r){return r.goal;})[0];
   // weight
   var w=db.weights.slice().sort(function(a,b){return a.d<b.d?-1:1;}), cur=w.length?w[w.length-1].v:null;
   var wV=cur!==null?(cur.toFixed(1)+" lb · goal 195"):"No weigh-in yet";
@@ -1420,7 +1455,9 @@ function coachContext(){
         consecutiveTrainingDays:trainStreak(),
         weeklyMiles:weekMiles(6),
         recentActivities:STRAVA.acts.filter(function(a){return a.date>=sk;}).map(function(a){return a.date+" "+a.type+" "+(a.mi?a.mi+"mi ":"")+Math.round(a.min)+"min"+(a.paceSec?" @"+fmtPace(a.paceSec):"")+(a.hr?" HR"+a.hr:"")+(isGlitch(a)?" (GPS glitch, ignore)":"");}),
-        upcomingRaces:RACES.filter(function(r){return !r.done&&r.d>=k;}).map(function(r){return r.name+" "+r.d+" (in "+daysUntil(r.d)+"d)"+(r.goal?" GOAL":"");})
+        upcomingRaces:racesAll().filter(function(r){return !r.done&&r.d>=k;}).map(function(r){return r.name+" "+r.d+" (in "+daysUntil(r.d)+"d)"+(r.goal?" GOAL":"");}),
+        fullPlan:allPlan().filter(function(q){return q.d>=k;}).map(function(q){return q.d+" "+q.type+" "+q.mi+"mi"+(q.note?" ("+q.note+")":"")+(q.edited?" [edited]":"");}),
+        editing:"You CAN change this plan with the edit_plan tool (add/move/resize/remove runs by date) and races with edit_race. Do it when he asks, confirm what changed."
       };
     })()
   };
@@ -1468,6 +1505,13 @@ function coachApply(a){
   if(a.tool==="log_weight"){ var lb=+a.input.lb; if(!lb)return null; db.weights=db.weights.filter(function(x){return x.d!==k;}); db.weights.push({d:k,v:lb}); drawWeight(); return "✓ Logged weight "+lb+" lb"; }
   if(a.tool==="log_lift"){ var i=a.input; if(!i.lift)return null; db.lifts.push({lift:i.lift,wt:+i.wt||0,reps:+i.reps||0,d:k}); drawLifts(); return "✓ Logged "+i.lift+" "+(+i.wt||0)+"×"+(+i.reps||0); }
   if(a.tool==="remember"){ var n=(a.input.note||"").trim(); if(!n)return null; if(db.memory.indexOf(n)<0)db.memory.push(n); return "🧠 Saved to memory: "+n; }
+  if(a.tool==="edit_plan"){ var ch=(a.input&&a.input.changes)||[]; if(!ch.length)return null; var notes=[];
+    ch.forEach(function(c){ if(!c||!/^\d{4}-\d{2}-\d{2}$/.test(c.date||""))return;
+      if(c.remove){ editPlan(c.date,null); notes.push("removed "+c.date); return; }
+      if(c.moveTo&&/^\d{4}-\d{2}-\d{2}$/.test(c.moveTo)){ var cur=planFor(c.date); editPlan(c.date,null); editPlan(c.moveTo,{type:c.type||(cur&&cur.type),mi:c.mi!=null?c.mi:(cur&&cur.mi),note:c.note!=null?c.note:(cur&&cur.note)}); notes.push(c.date.slice(5)+" → "+c.moveTo.slice(5)); return; }
+      editPlan(c.date,{type:c.type,mi:c.mi,note:c.note}); notes.push(c.date.slice(5)+": "+(c.type||"")+" "+(c.mi!=null?c.mi+" mi":"")); });
+    return notes.length?("🗓️ Plan updated · "+notes.join(" · ")):null; }
+  if(a.tool==="edit_race"){ var r=a.input||{}; if(!r.name)return null; if(r.remove){editRace(r.name,null);return "🏁 Removed race: "+r.name;} var chg={}; if(r.date)chg.d=r.date; if(r.where)chg.where=r.where; if(r.dist)chg.dist=r.dist; if(r.goal!=null)chg.goal=!!r.goal; if(r.done!=null)chg.done=!!r.done; if(r.result)chg.result=r.result; editRace(r.name,chg); return "🏁 Race updated: "+r.name+(r.date?" → "+r.date:""); }
   if(a.tool==="log_feel"){ var md=String(a.input.mood||"").toLowerCase(); if(!MOODS.some(function(m){return m[0]===md;}))return null; var tg=(a.input.tags||[]).map(String).slice(0,6); db.feel=db.feel||{}; db.feel[k]={mood:md,tags:tg,ts:Date.now()}; drawRun(); setTimeout(function(){coachToday(true);},50); return "🏃 Logged how you feel: "+md+(tg.length?" · "+tg.join(", "):""); }
   return null;
 }
@@ -1502,10 +1546,10 @@ document.getElementById("coachTone").addEventListener("click",function(){db.sett
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=40").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=41").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=40; // bump this + version.json + ?v= on every release
+var APPVER=41; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
