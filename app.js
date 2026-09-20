@@ -1280,14 +1280,20 @@ function drawRun(){
   var recent=STRAVA.acts.filter(isRunAct).slice(0,8);
   var other=(function(){var ws=iso(weekStartMon(TODAY)),c={};STRAVA.acts.forEach(function(a){if(a.date<ws||/run/.test(actType(a))||!isTrainAct(a))return;c[a.type]=(c[a.type]||0)+1;});
     return Object.keys(c).map(function(t){return c[t]+" "+t.replace(/([a-z])([A-Z])/g,"$1 $2").toLowerCase();}).join(" · ");})();
-  var rec='<section class="panel"><h3>Recent runs · Strava</h3>'+(recent.length?'<div class="runlist">'+recent.map(function(a){return '<div class="runrow"><div class="rr-l"><b>'+a.mi.toFixed(2)+' mi</b><small>'+esc(a.name)+' · '+niceDate(a.date)+'</small></div><div class="rr-r num">'+fmtPace(a.paceSec)+'<small>'+fmtMin(a.min)+(a.hr?' · ♥ '+a.hr:'')+'</small></div></div>';}).join("")+'</div>'
+  var rec='<section class="panel"><h3>Recent runs · Strava</h3>'+(recent.length?'<div class="runlist">'+recent.map(function(a){return '<button class="runrow" data-run="'+a.id+'"><div class="rr-l"><b>'+a.mi.toFixed(2)+' mi</b><small>'+esc(a.name)+' · '+niceDate(a.date)+'</small></div><div class="rr-r num">'+fmtPace(a.paceSec)+'<small>'+fmtMin(a.min)+(a.hr?' · ♥ '+a.hr:'')+' ›</small></div></button>';}).join("")+'</div>'
     :(conn===null?'<div class="skel" style="height:44px;margin-bottom:8px">&nbsp;</div><div class="skel" style="height:44px">&nbsp;</div>':'<div class="empty">'+(conn===false?"Connect Strava (⤢ settings) to pull your runs.":"No runs in the last 70 days.")+'</div>'))+
     (other?'<div class="empty" style="padding-top:10px">Also this week: '+esc(other)+'</div>':'')+'</section>';
   // full plan, grouped by week
   var plist=allPlan(); var byWeek={};plist.forEach(function(q){var w=planWeekIndex(new Date(q.d+"T12:00:00"));(byWeek[w]=byWeek[w]||[]).push(q);});
+  // whim runs: any Strava run on a day with no planned run shows up in its week as a bonus
+  var planDays={}; plist.forEach(function(q){planDays[q.d]=1;});
+  var bonusN=0; STRAVA.acts.filter(isRunAct).forEach(function(r){ if(planDays[r.date]||r.date<PLAN_START)return; var w=planWeekIndex(new Date(r.date+"T12:00:00")); if(w<1||w>PLAN_WEEKS)return; (byWeek[w]=byWeek[w]||[]).push({d:r.date,bonus:r}); bonusN++; });
+  Object.keys(byWeek).forEach(function(w){byWeek[w].sort(function(x,y){return x.d<y.d?-1:1;});});
   var doneN=plist.filter(function(q){return planDone(q);}).length;
-  var plan='<details class="panel planfull"'+(wk>=1&&wk<=PLAN_WEEKS?"":" open")+'><summary><h3 style="margin:0;display:inline">Full plan · 10 weeks</h3><span class="sum-r">'+doneN+' / '+plist.length+' done</span></summary>'+
-    Object.keys(byWeek).map(function(w){return '<div class="pw'+(+w===wk?" cur":"")+'"><div class="pw-h">Week '+w+' <span>'+planPhase(+w)+'</span></div>'+byWeek[w].map(function(q){var dn=planDone(q);
+  var plan='<details class="panel planfull"'+(wk>=1&&wk<=PLAN_WEEKS?"":" open")+'><summary><h3 style="margin:0;display:inline">Full plan · 10 weeks</h3><span class="sum-r">'+doneN+' / '+plist.length+' done'+(bonusN?' · +'+bonusN+' bonus':'')+'</span></summary>'+
+    Object.keys(byWeek).map(function(w){return '<div class="pw'+(+w===wk?" cur":"")+'"><div class="pw-h">Week '+w+' <span>'+planPhase(+w)+'</span></div>'+byWeek[w].map(function(q){
+      if(q.bonus){var r=q.bonus;return '<button class="pw-r done bonus" data-run="'+r.id+'"><span class="chk">+</span><span class="pw-d">'+niceDate(r.date,{weekday:"short",month:"numeric",day:"numeric"})+'</span><span class="pw-l">Bonus · '+esc(r.name)+'</span><span class="pw-a num">'+r.mi.toFixed(1)+' mi</span></button>';}
+      var dn=planDone(q);
       return '<button class="pw-r'+(dn?" done":"")+(q.d===k?" today":"")+'" data-edit="'+q.d+'"><span class="chk">'+(dn?"✓":"")+'</span><span class="pw-d">'+niceDate(q.d,{weekday:"short",month:"numeric",day:"numeric"})+'</span><span class="pw-l">'+esc(planLabel(q))+(q.edited?' <span class="pw-e">edited</span>':'')+'</span>'+(dn?'<span class="pw-a num">'+dn.mi.toFixed(1)+' mi</span>':'<span class="pw-a" style="color:var(--muted)">›</span>')+'</button>';}).join("")+'</div>';}).join("")+
     '<button class="btn ghost full" id="addRunBtn" style="margin-top:12px">➕ Add a run</button><p class="empty" style="padding:8px 0 0">Tap any run to change it. You can also just tell Rocky ("move Thursday to Friday", "make Saturday 5 miles").</p></details>';
   var connect=conn===false?'<article class="card" style="border-left-color:#FC4C02"><div class="head"><h2>Connect Strava</h2></div><p style="font-size:13px;color:var(--muted);margin:10px 0 14px">Your watch already logs every run to Strava. Connect once and the plan checks itself off, the coach sees your real paces, and nothing gets typed twice.</p><button class="btn full" id="stravaConnectBtn" style="background:#FC4C02;border-color:#FC4C02;color:#fff">Connect Strava</button></article>':'';
@@ -1297,9 +1303,81 @@ function drawRun(){
   Array.prototype.forEach.call(box.querySelectorAll(".rday"),function(b){b.addEventListener("click",function(){runSel=b.dataset.rday;drawRun();});});
   var cb=document.getElementById("stravaConnectBtn"); if(cb)cb.addEventListener("click",stravaConnect);
   Array.prototype.forEach.call(box.querySelectorAll("[data-edit]"),function(b){b.addEventListener("click",function(){openPlanEditor(b.dataset.edit);});});
+  Array.prototype.forEach.call(box.querySelectorAll("[data-run]"),function(b){b.addEventListener("click",function(){openRunDetail(+b.dataset.run);});});
   var ar=document.getElementById("addRunBtn"); if(ar)ar.addEventListener("click",function(){openPlanEditor(null);});
   var c=(db.coachToday||{})[k]; if(c)renderTodayCoach(c); else if(!STRAVA.fetchedAt)renderTodayCoach(null); else coachToday(false);
 }
+
+/* ---------- RUN DETAIL: every bit of Strava + Apple Health data for one run ---------- */
+var RD_CACHE={};
+function fmtSec(s){ s=Math.round(s||0); var h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60; return (h?h+":"+String(m).padStart(2,"0"):m)+":"+String(x).padStart(2,"0"); }
+function appleMatch(date,startIso){ var day=HEALTH[date]||{}; var t0=startIso?new Date(startIso).getTime():0; var best=null;
+  (day.workouts||[]).forEach(function(w){ var tp=(w.type||"").toLowerCase(); if(tp.indexOf("run")<0&&tp.indexOf("jog")<0)return; var tw=w.start?new Date(w.start).getTime():0; var dt=Math.abs(tw-t0); if(!best||dt<best.dt)best={w:w,dt:dt}; });
+  return (best&&best.dt<45*60000)?best.w:null; }
+function openRunDetail(id){
+  var el=document.getElementById("runDetail"); if(!el)return;
+  el.classList.add("on"); el.setAttribute("aria-hidden","false");
+  var body=document.getElementById("rdBody");
+  var sum=STRAVA.acts.filter(function(a){return a.id===id;})[0];
+  document.getElementById("rdTitle").textContent=sum?sum.name:"Run";
+  document.getElementById("rdSub").textContent=sum?(niceDate(sum.date,{weekday:"long",month:"short",day:"numeric"})+" · "+sum.type):"";
+  if(RD_CACHE[id]){ renderRunDetail(RD_CACHE[id]); return; }
+  body.innerHTML='<div class="skel" style="height:72px;margin-bottom:10px">&nbsp;</div><div class="skel" style="height:120px;margin-bottom:10px">&nbsp;</div><div class="skel" style="height:160px">&nbsp;</div>';
+  if(!cfg.url||!cfg.tok){ body.innerHTML='<div class="empty">Connect cloud sync (⤢) first.</div>'; return; }
+  fetch(cfg.url.replace(/\/$/,"")+"/strava/activity/"+id,{headers:{"Authorization":"Bearer "+cfg.tok}})
+   .then(function(r){return r.ok?r.json():null;})
+   .then(function(d){ if(!d||!d.id){ body.innerHTML='<div class="empty">Couldn\'t load this run from Strava.</div>'; return; } RD_CACHE[id]=d; renderRunDetail(d); })
+   .catch(function(){ body.innerHTML='<div class="empty">Network error.</div>'; });
+}
+function closeRunDetail(){ var el=document.getElementById("runDetail"); el.classList.remove("on"); el.setAttribute("aria-hidden","true"); }
+function downsample(arr,n){ if(!arr||arr.length<=n)return arr||[]; var out=[],step=arr.length/n; for(var i=0;i<n;i++){ var s=Math.floor(i*step),e=Math.floor((i+1)*step),sum=0,c=0; for(var j=s;j<e&&j<arr.length;j++){sum+=arr[j];c++;} out.push(c?sum/c:arr[s]); } return out; }
+function lineChart(xs,ys,opts){
+  var W=320,H=110,pl=34,pr=6,pt=8,pb=18; if(!ys||ys.length<3)return "";
+  var lo=Math.min.apply(null,ys),hi=Math.max.apply(null,ys); if(hi-lo<1e-6){hi=lo+1;}
+  var xmax=xs[xs.length-1]||1;
+  var X=function(i){return pl+(W-pl-pr)*(xs[i]/xmax);}, Y=function(v){var q=(v-lo)/(hi-lo); if(opts.invert)q=1-q; return pt+(H-pt-pb)*(1-q);};
+  var path=ys.map(function(v,i){return (i?"L":"M")+X(i).toFixed(1)+","+Y(v).toFixed(1);}).join(" ");
+  var area=path+" L"+X(ys.length-1).toFixed(1)+","+(H-pb)+" L"+pl+","+(H-pb)+" Z";
+  var ticks=[lo,(lo+hi)/2,hi].map(function(v){return '<text x="'+(pl-4)+'" y="'+(Y(v)+3).toFixed(1)+'" text-anchor="end" font-size="8.5" fill="var(--muted)" font-family="var(--mono)">'+opts.fmt(v)+'</text><line x1="'+pl+'" x2="'+(W-pr)+'" y1="'+Y(v).toFixed(1)+'" y2="'+Y(v).toFixed(1)+'" stroke="var(--border)" stroke-width="0.6"/>';}).join("");
+  var mileTicks=""; for(var m=1;m<xmax;m++){ var x=pl+(W-pl-pr)*(m/xmax); mileTicks+='<text x="'+x.toFixed(1)+'" y="'+(H-5)+'" text-anchor="middle" font-size="8.5" fill="var(--muted)" font-family="var(--mono)">'+m+'</text>'; }
+  return '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="width:100%;height:110px;display:block">'+ticks+'<path d="'+area+'" fill="'+opts.color+'" opacity=".12"/><path d="'+path+'" fill="none" stroke="'+opts.color+'" stroke-width="2" stroke-linejoin="round"/>'+mileTicks+'</svg>';
+}
+function renderRunDetail(d){
+  var body=document.getElementById("rdBody"); var st=d.streams||{};
+  var tile=function(v,l){return '<div class="ring"><div class="rv num" style="font-size:16px">'+v+'</div><div class="rk">'+l+'</div></div>';};
+  var h='';
+  h+='<div class="rings" style="grid-template-columns:repeat(3,1fr)">'+tile(d.distanceMi.toFixed(2),"miles")+tile(fmtSec(d.movingSec),"moving")+tile(fmtPace(d.paceSec),"avg pace")+
+     (d.avgHr?tile(d.avgHr+(d.maxHr?'<small style="font-size:10px;color:var(--muted)"> / '+d.maxHr+'</small>':''),"avg / max HR"):"")+(d.cadence?tile(d.cadence,"steps/min"):"")+(d.calories?tile(Math.round(d.calories),"kcal (Strava)"):"")+
+     tile(d.elevGainFt+"ft","elev gain")+(d.elapsedSec>d.movingSec+20?tile(fmtSec(d.elapsedSec-d.movingSec),"stopped"):"")+(d.sufferScore?tile(d.sufferScore,"relative effort"):"")+
+     (d.avgTempC!=null?tile(Math.round(d.avgTempC*9/5+32)+"°","temp"):"")+(d.perceivedExertion!=null?tile(d.perceivedExertion+"/10","RPE"):"")+(d.prs?tile(d.prs,"PRs"):"")+'</div>';
+  if(d.description) h+='<div class="focus" style="margin-bottom:12px">'+esc(d.description)+'</div>';
+  var aw=appleMatch(d.date,d.start);
+  if(aw){ var r=aw.raw||{}; var hrA=(r.heartRate&&(r.heartRate.avg||r.heartRate.average))||r.heartRateAverage||r.avgHeartRate||null, hrM=(r.heartRate&&r.heartRate.max)||r.heartRateMaximum||r.maxHeartRate||null;
+    h+='<div class="focus" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:10px"><b>⌚ Apple Health:</b> <span>'+aw.kcal+' kcal active</span>'+(aw.min?'<span>'+aw.min+' min</span>':'')+(aw.mi!=null?'<span>'+aw.mi+' mi</span>':'')+(hrA?'<span>♥ '+Math.round(+hrA)+(hrM?' / '+Math.round(+hrM):'')+'</span>':'')+(r.stepCount?'<span>'+Math.round(+(r.stepCount.qty||r.stepCount))+' steps</span>':'')+(r.elevationUp?'<span>↑ '+Math.round(+(r.elevationUp.qty||r.elevationUp))+' '+esc(r.elevationUp.units||"")+'</span>':'')+'</div>'; }
+  if(st.distance&&st.distance.length>10){
+    var N=220, xs=downsample(st.distance.map(function(m){return m/1609.34;}),N);
+    if(st.velocity_smooth){ var pace=downsample(st.velocity_smooth.map(function(v){return v>0.3?Math.min(1200,Math.max(240,1609.34/v)):1200;}),N);
+      h+='<section class="panel" style="padding:12px 14px"><h3 style="margin-bottom:6px">Pace <span style="font-weight:600;letter-spacing:0;text-transform:none;color:var(--muted)">· per mile, higher line = faster</span></h3>'+lineChart(xs,pace,{color:"var(--red)",invert:true,fmt:fmtPace})+'</section>'; }
+    if(st.heartrate){ var hr=downsample(st.heartrate,N);
+      h+='<section class="panel" style="padding:12px 14px"><h3 style="margin-bottom:6px">Heart rate</h3>'+lineChart(xs,hr,{color:"#E0576B",fmt:function(v){return Math.round(v);}})+'</section>'; }
+    if(st.altitude){ var alt=downsample(st.altitude.map(function(m){return m*3.281;}),N);
+      h+='<section class="panel" style="padding:12px 14px"><h3 style="margin-bottom:6px">Elevation <span style="font-weight:600;letter-spacing:0;text-transform:none;color:var(--muted)">· ft</span></h3>'+lineChart(xs,alt,{color:"var(--gold)",fmt:function(v){return Math.round(v);}})+'</section>'; }
+    if(st.cadence){ var cad=downsample(st.cadence.map(function(c){return c*2;}),N);
+      h+='<section class="panel" style="padding:12px 14px"><h3 style="margin-bottom:6px">Cadence <span style="font-weight:600;letter-spacing:0;text-transform:none;color:var(--muted)">· steps/min</span></h3>'+lineChart(xs,cad,{color:"#5B8DEF",fmt:function(v){return Math.round(v);}})+'</section>'; }
+  }
+  if(d.hrZones&&d.hrZones.minutes){ var z=d.hrZones.minutes,tot=z.reduce(function(a,b){return a+b;},0)||1,cols=["#5B8DEF","#4E9F63","#D4A63C","#FF7A18","#C8102E"],names=["Z1 easy","Z2 aerobic","Z3 tempo","Z4 threshold","Z5 max"];
+    h+='<section class="panel" style="padding:12px 14px"><h3>Heart rate zones <span style="font-weight:600;letter-spacing:0;text-transform:none;color:var(--muted)">· max '+d.hrZones.maxHrUsed+'</span></h3><div class="zbar">'+z.map(function(m,i){return m>0?'<span style="flex:'+m+';background:'+cols[i]+'"></span>':'';}).join("")+'</div><div class="zlist">'+z.map(function(m,i){return '<div><i style="background:'+cols[i]+'"></i>'+names[i]+'<b class="num">'+m.toFixed(1)+'m · '+Math.round(m/tot*100)+'%</b></div>';}).join("")+'</div></section>'; }
+  if(d.splits&&d.splits.length){ var paces=d.splits.filter(function(s){return s.paceSec;}).map(function(s){return s.paceSec;}); var fastest=paces.length?Math.min.apply(null,paces):null;
+    h+='<section class="panel" style="padding:12px 14px"><h3>Mile splits</h3><table><thead><tr><th>Mi</th><th style="text-align:right">Pace</th><th style="text-align:right">HR</th><th style="text-align:right">Elev</th></tr></thead><tbody>'+d.splits.map(function(s){return '<tr><td>'+(s.mi<0.95?s.mi.toFixed(2):s.n)+'</td><td class="n"'+(s.paceSec===fastest?' style="color:var(--gold);font-weight:700"':'')+'>'+fmtPace(s.paceSec)+'</td><td class="n">'+(s.avgHr||"—")+'</td><td class="n">'+(s.elevFt>0?"+":"")+s.elevFt+'</td></tr>';}).join("")+'</tbody></table></section>'; }
+  if(d.bestEfforts&&d.bestEfforts.length){ h+='<section class="panel" style="padding:12px 14px"><h3>Best efforts</h3><div class="sugchips">'+d.bestEfforts.map(function(e){return '<span class="sugchip" style="cursor:default">'+esc(e.name)+' <b class="num" style="margin-left:6px">'+fmtSec(e.sec)+'</b>'+(e.pr?' <span style="color:var(--gold)">PR'+(e.pr>1?" #"+e.pr:"")+'</span>':'')+'</span>';}).join("")+'</div></section>'; }
+  if(d.laps&&d.laps.length>1){ h+='<section class="panel" style="padding:12px 14px"><h3>Laps</h3><table><thead><tr><th>Lap</th><th style="text-align:right">Dist</th><th style="text-align:right">Pace</th><th style="text-align:right">HR</th></tr></thead><tbody>'+d.laps.map(function(l){return '<tr><td>'+l.n+'</td><td class="n">'+l.mi.toFixed(2)+'</td><td class="n">'+fmtPace(l.paceSec)+'</td><td class="n">'+(l.avgHr||"—")+'</td></tr>';}).join("")+'</tbody></table></section>'; }
+  var meta=[]; if(d.device)meta.push(d.device); if(d.gear)meta.push(d.gear); if(d.city)meta.push(d.city); if(d.elevHighFt!=null)meta.push("elev "+d.elevLowFt+"–"+d.elevHighFt+" ft"); if(d.start)meta.push("started "+new Date(d.start).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}));
+  if(meta.length) h+='<div class="empty" style="padding:4px 0 12px">'+esc(meta.join(" · "))+'</div>';
+  h+='<button class="btn gold full" id="rdAsk">💬 Ask Rocky to break this run down</button>';
+  body.innerHTML=h;
+  document.getElementById("rdAsk").addEventListener("click",function(){ closeRunDetail(); coachOpen(); var ta=document.getElementById("coachText"); ta.value="Break down my run \""+d.name+"\" on "+d.date+" (Strava id "+d.id+"): splits, heart rate, what went well, what to fix, and how it fits my plan."; coachSend(); });
+}
+(function(){ var c=document.getElementById("rdClose"); if(c)c.addEventListener("click",closeRunDetail); })();
 
 /* ---------- HOME dashboard ---------- */
 var _heroLast=null;
@@ -1454,7 +1532,7 @@ function coachContext(){
         feelToday:feelFor(k),
         consecutiveTrainingDays:trainStreak(),
         weeklyMiles:weekMiles(6),
-        recentActivities:STRAVA.acts.filter(function(a){return a.date>=sk;}).map(function(a){return a.date+" "+a.type+" "+(a.mi?a.mi+"mi ":"")+Math.round(a.min)+"min"+(a.paceSec?" @"+fmtPace(a.paceSec):"")+(a.hr?" HR"+a.hr:"")+(isGlitch(a)?" (GPS glitch, ignore)":"");}),
+        recentActivities:STRAVA.acts.filter(function(a){return a.date>=sk;}).map(function(a){return a.date+" "+a.type+" "+(a.mi?a.mi+"mi ":"")+Math.round(a.min)+"min"+(a.paceSec?" @"+fmtPace(a.paceSec):"")+(a.hr?" HR"+a.hr:"")+(a.cadence?" cad"+a.cadence:"")+(isGlitch(a)?" (GPS glitch, ignore)":"")+" (id "+a.id+")";}),
         upcomingRaces:racesAll().filter(function(r){return !r.done&&r.d>=k;}).map(function(r){return r.name+" "+r.d+" (in "+daysUntil(r.d)+"d)"+(r.goal?" GOAL":"");}),
         fullPlan:allPlan().filter(function(q){return q.d>=k;}).map(function(q){return q.d+" "+q.type+" "+q.mi+"mi"+(q.note?" ("+q.note+")":"")+(q.edited?" [edited]":"");}),
         editing:"You CAN change this plan with the edit_plan tool (add/move/resize/remove runs by date) and races with edit_race. Do it when he asks, confirm what changed."
@@ -1546,10 +1624,10 @@ document.getElementById("coachTone").addEventListener("click",function(){db.sett
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=41").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=42").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=41; // bump this + version.json + ?v= on every release
+var APPVER=42; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})

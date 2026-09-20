@@ -142,6 +142,7 @@ const CHAT_TOOLS = [
   { name: "remember", description: "Save a durable fact about John for future conversations.", input_schema: { type: "object", properties: { note:{type:"string"} }, required:["note"] } },
   { name: "edit_plan", description: "Change John's running plan: add, resize, move, or remove runs by date. He sees the change instantly on the Run tab.", input_schema: { type:"object", properties:{ changes:{ type:"array", items:{ type:"object", properties:{ date:{type:"string",description:"YYYY-MM-DD of the run to change or add"}, type:{type:"string",enum:["easy","tempo","long","race","shake"]}, mi:{type:"number"}, note:{type:"string"}, moveTo:{type:"string",description:"YYYY-MM-DD to move this run to"}, remove:{type:"boolean"} }, required:["date"] } } }, required:["changes"] } },
   { name: "edit_race", description: "Add, fix, or remove a race on John's calendar (name is the key).", input_schema: { type:"object", properties:{ name:{type:"string"}, date:{type:"string"}, where:{type:"string"}, dist:{type:"string"}, goal:{type:"boolean"}, done:{type:"boolean"}, result:{type:"string"}, remove:{type:"boolean"} }, required:["name"] } },
+  { name: "strava_run_detail", description: "Fetch FULL detail for one of John's Strava activities by its id (ids are in CONTEXT.running.recentActivities): mile splits with pace and HR, laps, best efforts (1K, 1 mile, 5K...), HR zone minutes, cadence, calories, elevation, temperature, perceived exertion, description. Use this whenever he asks to break down, analyze, or compare a run.", input_schema: { type:"object", properties:{ id:{type:"number"} }, required:["id"] } },
   { name: "log_feel", description: "Record how John feels today for the run coach.", input_schema: { type: "object", properties: { mood:{type:"string", enum:["wrecked","tired","good","great"]}, tags:{type:"array", items:{type:"string"}} }, required:["mood"] } },
 ];
 const CLIENT_TOOLS = { log_food:1, log_weight:1, log_lift:1, remember:1, log_feel:1, edit_plan:1, edit_race:1 };
@@ -191,8 +192,63 @@ function normAct(a) {
     suffer: a.suffer_score || null,
     kj: a.kilojoules || null,
     device: a.device_name || null,
+    cadence: a.average_cadence ? Math.round(a.average_cadence * 2) : null, // Strava stores one-foot rpm for runs; x2 = steps/min
+    maxSpeedSecMi: a.max_speed ? Math.round(1609.34 / a.max_speed) : null,
+    prs: a.pr_count || 0,
+    achievements: a.achievement_count || 0,
+    hasHr: !!a.has_heartrate,
+    workoutType: a.workout_type == null ? null : a.workout_type, // runs: 0 default, 1 race, 2 long run, 3 workout
+    city: a.location_city || null,
   };
 }
+
+/* Full detail for ONE activity (immutable once uploaded, so cached forever in KV): detail + streams + derived. */
+const STREAM_KEYS = "time,distance,heartrate,cadence,altitude,velocity_smooth,grade_smooth,temp";
+function hrZones(streams, maxHr) {
+  const hr = streams.heartrate, t = streams.time; if (!hr || !t || hr.length < 2) return null;
+  const mx = maxHr || Math.max(190, ...hr);
+  const z = [0, 0, 0, 0, 0]; // seconds in Z1..Z5 (<60,60-70,70-80,80-90,90+ % of max)
+  for (let i = 1; i < hr.length; i++) { const dt = Math.max(0, Math.min(30, t[i] - t[i - 1])); const p = hr[i] / mx; const k = p < .6 ? 0 : p < .7 ? 1 : p < .8 ? 2 : p < .9 ? 3 : 4; z[k] += dt; }
+  return { maxHrUsed: mx, minutes: z.map((s) => Math.round(s / 6) / 10) };
+}
+async function stravaDetail(env, id) {
+  const key = "strava:act:" + id;
+  const cached = await env.PLATFORM_STATE.get(key);
+  if (cached) return JSON.parse(cached);
+  const t = await stravaToken(env); if (!t) return null;
+  const H = { headers: { Authorization: "Bearer " + t.access_token } };
+  const [dr, sr] = await Promise.all([
+    fetch("https://www.strava.com/api/v3/activities/" + id + "?include_all_efforts=true", H),
+    fetch("https://www.strava.com/api/v3/activities/" + id + "/streams?keys=" + STREAM_KEYS + "&key_by_type=true", H),
+  ]);
+  if (!dr.ok) throw new Error("strava detail " + dr.status);
+  const d = await dr.json();
+  const s = sr.ok ? await sr.json() : {};
+  const streams = {}; Object.keys(s || {}).forEach((k) => { if (s[k] && Array.isArray(s[k].data)) streams[k] = s[k].data; });
+  const mi = (m) => Math.round((m || 0) / 1609.34 * 100) / 100, ft = (m) => Math.round((m || 0) * 3.281);
+  const out = {
+    id: d.id, name: d.name, type: d.sport_type || d.type, date: String(d.start_date_local || "").slice(0, 10), start: d.start_date_local,
+    description: d.description || "", city: d.location_city || null, device: d.device_name || null, gear: d.gear ? d.gear.name : null,
+    workoutType: d.workout_type == null ? null : d.workout_type, perceivedExertion: d.perceived_exertion == null ? null : d.perceived_exertion,
+    distanceMi: mi(d.distance), movingSec: d.moving_time, elapsedSec: d.elapsed_time,
+    paceSec: d.distance > 100 ? Math.round(d.moving_time / (d.distance / 1609.34)) : null,
+    avgHr: d.average_heartrate ? Math.round(d.average_heartrate) : null, maxHr: d.max_heartrate ? Math.round(d.max_heartrate) : null,
+    cadence: d.average_cadence ? Math.round(d.average_cadence * 2) : null,
+    calories: d.calories || null, kj: d.kilojoules || null,
+    elevGainFt: ft(d.total_elevation_gain), elevHighFt: d.elev_high != null ? ft(d.elev_high) : null, elevLowFt: d.elev_low != null ? ft(d.elev_low) : null,
+    avgTempC: d.average_temp == null ? null : d.average_temp, sufferScore: d.suffer_score || null, prs: d.pr_count || 0, achievements: d.achievement_count || 0,
+    splits: (d.splits_standard || []).map((x, i) => ({ n: i + 1, mi: mi(x.distance), movingSec: x.moving_time, elapsedSec: x.elapsed_time,
+      paceSec: x.distance > 50 ? Math.round(x.moving_time / (x.distance / 1609.34)) : null, avgHr: x.average_heartrate ? Math.round(x.average_heartrate) : null, elevFt: ft(x.elevation_difference) })),
+    laps: (d.laps || []).map((l, i) => ({ n: i + 1, name: l.name, mi: mi(l.distance), movingSec: l.moving_time, paceSec: l.distance > 50 ? Math.round(l.moving_time / (l.distance / 1609.34)) : null, avgHr: l.average_heartrate ? Math.round(l.average_heartrate) : null, maxHr: l.max_heartrate ? Math.round(l.max_heartrate) : null })),
+    bestEfforts: (d.best_efforts || []).map((e) => ({ name: e.name, sec: e.elapsed_time, mi: mi(e.distance), pr: e.pr_rank || null })),
+    hrZones: hrZones(streams, d.max_heartrate ? Math.max(190, Math.round(d.max_heartrate)) : null),
+    streams,
+  };
+  await env.PLATFORM_STATE.put(key, JSON.stringify(out));
+  return out;
+}
+// What Rocky gets when he asks for a run's detail (no raw streams, they are for charts).
+function detailForCoach(x) { if (!x) return null; const c = { ...x }; delete c.streams; return c; }
 
 // Returns the stored token set, refreshing it first if it is (about to be) expired.
 async function stravaToken(env) {
@@ -296,12 +352,19 @@ async function chatCoach(body, env) {
     const txt = blocks.filter((b) => b.type === "text" && b.text).map((b) => b.text).join("").replace(/[ \t]+\n/g, "\n").trim();
     if (txt) replyParts.push(txt);
     const clientCalls = blocks.filter((b) => b.type === "tool_use" && CLIENT_TOOLS[b.name]);
-    if (data.stop_reason !== "tool_use" || !clientCalls.length) break;
+    const serverCalls = blocks.filter((b) => b.type === "tool_use" && b.name === "strava_run_detail");
+    if (data.stop_reason !== "tool_use" || (!clientCalls.length && !serverCalls.length)) break;
     // record the actions for the client to actually execute
     clientCalls.forEach((b) => actions.push({ tool: b.name, input: b.input }));
-    // feed the assistant turn back + acknowledge each client tool so the model can finish talking
+    // server tools run here and hand real data back to the model
+    const results = clientCalls.map((b) => ({ type: "tool_result", tool_use_id: b.id, content: "Done." }));
+    for (const b of serverCalls) {
+      let content = "Not found.";
+      try { const det = detailForCoach(await stravaDetail(env, Number(b.input && b.input.id))); if (det) content = JSON.stringify(det); } catch (e) { content = "Error: " + String(e.message || e); }
+      results.push({ type: "tool_result", tool_use_id: b.id, content });
+    }
     messages.push({ role: "assistant", content: blocks });
-    messages.push({ role: "user", content: clientCalls.map((b) => ({ type: "tool_result", tool_use_id: b.id, content: "Done." })) });
+    messages.push({ role: "user", content: results });
   }
   let reply = replyParts.join("\n").trim() || "Done.";
   if (sources.length && !/sources?:/i.test(reply)) reply += "\n\nSources:\n" + sources.slice(0, 8).join("\n");
@@ -362,6 +425,12 @@ export default {
         const force = url.searchParams.get("force") === "1";
         const out = await stravaActivities(env, days, force);
         return json(out || { connected: false }, 200, env);
+      }
+      if (url.pathname.startsWith("/strava/activity/") && request.method === "GET") {
+        const id = Number(url.pathname.split("/").pop());
+        if (!id) return json({ error: "bad id" }, 400, env);
+        const out = await stravaDetail(env, id);
+        return json(out || { error: "not connected" }, out ? 200 : 409, env);
       }
       if (url.pathname === "/strava/disconnect" && request.method === "POST") {
         await env.PLATFORM_STATE.delete(STRAVA_KEY);
@@ -466,6 +535,10 @@ Return ONLY JSON: {"suggestions":[{"name":string,"scheme":"3 × 10","why":"short
             const ae = w.activeEnergyBurned || w.activeEnergy || {};
             const dist = w.distance || w.totalDistance || w.walkingRunningDistance || null;
             const distMi = dist == null ? null : (num(dist.qty != null ? dist.qty : dist));
+            // keep EVERYTHING Health Auto Export sends about the workout (avg/max HR, steps, elevation, speed, weather...),
+            // minus per-sample arrays (route, heartRateData...) so the store stays small.
+            const slim = (v, depth) => { if (Array.isArray(v)) return v.length > 24 ? undefined : v.map((x) => slim(x, (depth || 0) + 1)).filter((x) => x !== undefined);
+              if (v && typeof v === "object") { if ((depth || 0) > 3) return undefined; const o = {}; Object.keys(v).forEach((k) => { const s = slim(v[k], (depth || 0) + 1); if (s !== undefined) o[k] = s; }); return o; } return v; };
             day.workouts.push({
               id: id,
               type: String(w.name || "Workout").slice(0, 40),
@@ -473,6 +546,8 @@ Return ONLY JSON: {"suggestions":[{"name":string,"scheme":"3 × 10","why":"short
               min: Math.round((num(w.duration) || 0) / 60),
               mi: distMi != null ? Math.round(distMi * 100) / 100 : null,
               start: String(w.start || w.end || date),
+              end: w.end ? String(w.end) : null,
+              raw: slim(w, 0),
               ts: Date.now()
             });
             touched++;
