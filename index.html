@@ -364,6 +364,8 @@
   .cmsg.user{align-self:flex-end;background:var(--red);color:var(--accent-ink);border-bottom-right-radius:4px}
   .cmsg.bot{align-self:flex-start;background:var(--surface-2);color:var(--text);border:1px solid var(--border);border-bottom-left-radius:4px}
   .cmsg.act{align-self:center;background:transparent;color:var(--gold);font-size:12px;padding:2px 0}
+  .cmsg .clink{color:var(--gold);text-decoration:underline;text-underline-offset:2px;word-break:break-all}
+  .cmsg.user .clink{color:var(--accent-ink)}
   .cmsg.think{align-self:flex-start;color:var(--muted);font-size:13px}
   .coachinput{display:flex;gap:8px;align-items:flex-end;padding:10px 12px calc(env(safe-area-inset-bottom) + 12px);border-top:1px solid var(--border)}
   #coachText{flex:1;resize:none;max-height:120px;background:var(--surface);border:1px solid var(--border);
@@ -822,6 +824,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=38"></script>
+<script src="app.js?v=39"></script>
 </body>
 </html>

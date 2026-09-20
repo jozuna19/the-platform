@@ -14,7 +14,8 @@ ALLOWED_ORIGIN = "https://jozuna19.github.io"
 # Model used to parse natural-language food entries.
 AI_MODEL = "claude-haiku-4-5-20251001"
 # Optional: a stronger model for the coach chat + today card (falls back to AI_MODEL).
-# e.g. COACH_MODEL = "claude-sonnet-4-6"  (roughly 5-10x the per-message cost of Haiku)
+# Coach chat + today card run on Sonnet 5 (John 2026-09-20: wants real research/verification quality). Food parsing stays on AI_MODEL.
+COACH_MODEL = "claude-sonnet-5"
 # Strava app "MyPersonalAnalytics" (client id is public; the secret is a wrangler secret).
 STRAVA_CLIENT_ID = "280111"
 # Where /strava/callback bounces the browser back to after Authorize.

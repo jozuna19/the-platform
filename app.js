@@ -1372,6 +1372,8 @@ function mdlite(s){ return String(s)
   .replace(/`(.+?)`/g,"$1")
   .replace(/^#{1,6}\s*/gm,"").replace(/^\s*[-*]\s+/gm,"• "); }
 function stamp(ms){ return new Date(ms).toLocaleString(undefined,{weekday:"short",month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}); }
+// turn bare URLs in an (already escaped) string into tappable links that open outside the PWA
+function linkify(s){ return s.replace(/(https?:\/\/[^\s<]+[^\s<.,;:)!?\u2019'"])/g,function(u){ var show=u.replace(/^https?:\/\/(www\.)?/,""); if(show.length>48)show=show.slice(0,45)+"…"; return '<a href="'+u+'" target="_blank" rel="noopener" class="clink">'+show+'</a>'; }); }
 function coachContext(){
   var k=iso(TODAY), tg=targets(k), tot=dayTotals(k);
   var hd=HEALTH[k]||{}; var burned=Math.round(hd.kcalToday||0);
@@ -1436,7 +1438,7 @@ function coachRender(){
   }
   box.innerHTML=db.chat.map(function(m){
     var cls=m.role==="user"?"user":(m.role==="act"?"act":"bot");
-    return '<div class="cmsg '+cls+'">'+esc(mdlite(m.content))+'</div>';
+    return '<div class="cmsg '+cls+'">'+linkify(esc(mdlite(m.content)))+'</div>';
   }).join("");
   box.scrollTop=box.scrollHeight;
 }
@@ -1500,10 +1502,10 @@ document.getElementById("coachTone").addEventListener("click",function(){db.sett
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=38").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=39").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=38; // bump this + version.json + ?v= on every release
+var APPVER=39; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})

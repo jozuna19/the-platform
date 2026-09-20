@@ -126,7 +126,7 @@ You can take actions with tools:
 - log_lift: record a strength set (lift name, weight lb, reps).
 - remember: save a durable fact about John for the future (injuries, preferences, goals, schedule). Use this whenever he tells you something worth remembering long-term.
 - log_feel: record how he feels today (wrecked / tired / good / great, plus tags like sore legs, slept bad, cramping) when he tells you. The run coach card uses it.
-- web_search: look up real nutrition facts / info when useful.
+- web_search: you have live web access. Use it whenever he asks you to look something up, verify a claim, find products/prices/races/places, compare options, or "research" something, and any time a fact is time-sensitive or you are not sure. For a "research" or "deep dive" request, run several searches, cross-check, and give him a tight brief. Always end a web-backed answer with a "Sources:" line listing the plain URLs you used (one per line, no markdown). Never invent a URL.
 
 Rules:
 - When he clearly states he ate something, LOG it with log_food (don't just describe it). Confirm briefly in your reply.
@@ -275,13 +275,20 @@ async function chatCoach(body, env) {
   const system = systemWithBrain(COACH_SYSTEM, brain, [ctx, mem].filter(Boolean).join("\n\n") + toneLine);
   const messages = (Array.isArray(body.messages) ? body.messages.slice(-24) : []).map((m) => ({ role: m.role, content: m.content }));
 
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
+  const lastText = typeof (lastUser && lastUser.content) === "string" ? lastUser.content : "";
+  const research = /\b(research|deep ?dive|look (it|this|that|them)? ?up|verify|fact.?check|sources?|links?|compare|find me|search)\b/i.test(lastText);
+  const tools = CHAT_TOOLS.map((t) => (t.name === "web_search" ? { ...t, max_uses: research ? 8 : 3 } : t));
   const actions = [];
   let replyParts = [];
+  const sources = [];
   // Agent loop: let the model call client tools (log_food/weight/lift/remember),
   // acknowledge each so its turn continues, and capture the final spoken reply.
   for (let step = 0; step < 4; step++) {
-    const data = await anthropic(system, CHAT_TOOLS, messages, env, { model: coachModel(env) });
+    const data = await anthropic(system, tools, messages, env, { model: coachModel(env), maxTokens: research ? 2500 : 1024 });
     const blocks = data.content || [];
+    // collect web-search citations so the app can show real links
+    blocks.forEach((b) => { (b.citations || []).forEach((c) => { if (c && c.url && !sources.includes(c.url)) sources.push(c.url); }); });
     const txt = blocks.filter((b) => b.type === "text" && b.text).map((b) => b.text).join("\n").trim();
     if (txt) replyParts.push(txt);
     const clientCalls = blocks.filter((b) => b.type === "tool_use" && CLIENT_TOOLS[b.name]);
@@ -292,7 +299,9 @@ async function chatCoach(body, env) {
     messages.push({ role: "assistant", content: blocks });
     messages.push({ role: "user", content: clientCalls.map((b) => ({ type: "tool_result", tool_use_id: b.id, content: "Done." })) });
   }
-  return { reply: replyParts.join("\n").trim() || "Done.", actions };
+  let reply = replyParts.join("\n").trim() || "Done.";
+  if (sources.length && !/sources?:/i.test(reply)) reply += "\n\nSources:\n" + sources.slice(0, 8).join("\n");
+  return { reply, actions, sources };
 }
 
 export default {
