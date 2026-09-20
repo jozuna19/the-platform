@@ -22,6 +22,7 @@
 
 const STATE_KEY = "state:john";
 const HEALTH_KEY = "health:john"; // separate store: Shortcut writes, app only reads
+const BRAIN_KEY = "brain:john";   // Rocky's coach-brain (markdown pushed from John's Mac; injected into every coach call, prompt-cached)
 const STRAVA_KEY = "strava:john"; // OAuth tokens (access/refresh/expires_at)
 const STRAVA_ACTS = "strava:acts"; // short-lived cache of normalized activities
 const STRAVA_CACHE_MS = 3 * 60 * 1000;
@@ -102,7 +103,7 @@ async function parseFood(text, env) {
   return Array.isArray(parsed.items) ? parsed.items : [];
 }
 
-const COACH_SYSTEM = `You are the AI coach built into John's personal fitness app "The Platform".
+const COACH_SYSTEM = `You are Rocky, John's personal AI, living inside his fitness app "The Platform". You are the same Rocky he talks to on his computer: you know his life, school, career, money habits and training (ROCKY'S BRAIN below), and you carry that into every answer here. Never say you are "just a fitness coach" or that you don't know him.
 John is on an aggressive but sustainable cut: from 247 lb toward ~195, roughly 1,900 kcal and ~185g protein on training days (a bit less on rest days), high protein, lifting 3-4x/week (squat/bench/deadlift background, meet bests 485/309/562) plus soccer (usually Wednesday) for conditioning.
 His lifting is FREEFORM: there is no fixed weekday split. Each day he picks what he is training (Push, Pull, Legs, Shoulders & Arms, Full body, Soccer, or Rest) and logs exercises with rep ranges as he goes or afterward. CONTEXT.todayWorkout is what he picked and logged today (or "Not chosen yet"); CONTEXT.recentSessions is what he actually trained over the last ~10 days. Never tell him a weekday "should" be a certain day. Instead help him balance the week from recentSessions (e.g. three push days and no pull yet, say so) and fit lifting around the run plan (heavy legs the day before a long run is a bad idea; say so). When he asks what to train today and nothing is chosen, suggest the kind that balances his recent work and the run plan, then let him pick.
 You are his coach, food logger, and accountability partner. Be direct, concise, and practical - he likes casual, no fluff, action-first answers. Never lecture.
@@ -143,6 +144,7 @@ const CLIENT_TOOLS = { log_food:1, log_weight:1, log_lift:1, remember:1, log_fee
 // Coach-facing calls (chat + today card) can run on a stronger model than food parsing.
 function coachModel(env) { return env.COACH_MODEL || env.AI_MODEL || "claude-haiku-4-5-20251001"; }
 
+// `system` may be a string or an array of text blocks (so the big, stable brain block can carry cache_control).
 async function anthropic(system, tools, messages, env, opts) {
   const o = opts || {};
   const r = await fetch("https://api.anthropic.com/v1/messages", {
@@ -152,6 +154,15 @@ async function anthropic(system, tools, messages, env, opts) {
   });
   if (!r.ok) { const t = await r.text(); throw new Error("anthropic " + r.status + ": " + t.slice(0, 300)); }
   return r.json();
+}
+
+// Rocky's brain: stable across a day, so it goes first and is prompt-cached; the live per-message bits follow uncached.
+async function loadBrain(env) { return (await env.PLATFORM_STATE.get(BRAIN_KEY)) || ""; }
+function systemWithBrain(base, brain, live) {
+  const blocks = [{ type: "text", text: base }];
+  if (brain) blocks.push({ type: "text", text: "ROCKY'S BRAIN (what you already know about John; treat as true, current as of its sync):\n\n" + brain, cache_control: { type: "ephemeral" } });
+  if (live) blocks.push({ type: "text", text: live });
+  return blocks;
 }
 
 /* ---------------- Strava ---------------- */
@@ -230,7 +241,7 @@ async function stravaActivities(env, days, force) {
   return out;
 }
 
-const TODAY_SYSTEM = `You are John's running coach inside his app "The Platform". You write the ONE card he reads before training today.
+const TODAY_SYSTEM = `You are Rocky, John's personal AI, writing the ONE card he reads before training today inside his app "The Platform". Use everything in ROCKY'S BRAIN (his life, school load, sleep, eating, how he is doing) plus today's DATA.
 He is a hybrid athlete on a cut (about 1,900 kcal, high protein). Lifting is freeform 3-4x/week (he picks push / pull / legs / arms / full day by day; DATA.lifting shows today's pick and his recent days), soccer usually Wednesday, and he follows a 10-week run plan (Mon easy, Thu quality, Sat long) toward the Thanksgiving Half Marathon on Thu Nov 26 2026. Goal: finish strong, not a PR (2025: 2:40:50).
 He tends to overtrain and under-eat. Protect rest and food. Six or more consecutive training days means prescribe rest or truly easy. If he feels wrecked, slept badly, or is cramping, downgrade the day without guilt. No carb fuel for runs under ~75 min on the cut; electrolytes yes. Treat soccer separately from runs. Ignore GPS glitches.
 Use the DATA you are given. Refer to his actual numbers (miles, paces, streak, what he ate) when they matter. Plain text only: no markdown, no dashes, no emoji.
@@ -239,7 +250,8 @@ Return ONLY a JSON object shaped exactly:
 "call" meaning: go = do the planned session as written; easy = do it but easier/shorter; rest = skip today, recover; swap = do something different than planned (say what in headline); race = it is a race day; done = today's run is already logged, so the card is a debrief plus what tomorrow needs.`;
 
 async function coachToday(body, env) {
-  const data = await anthropic(TODAY_SYSTEM, [], [{ role: "user", content: "DATA:\n" + JSON.stringify(body) + "\n\nWrite the card." }], env, { model: coachModel(env), maxTokens: 400 });
+  const brain = await loadBrain(env);
+  const data = await anthropic(systemWithBrain(TODAY_SYSTEM, brain, ""), [], [{ role: "user", content: "DATA:\n" + JSON.stringify(body) + "\n\nWrite the card." }], env, { model: coachModel(env), maxTokens: 400 });
   const texts = (data.content || []).filter((x) => x.type === "text" && x.text).map((x) => x.text);
   const raw = (texts.length ? texts[texts.length - 1] : "").trim();
   const m = raw.match(/\{[\s\S]*\}/);
@@ -257,7 +269,8 @@ async function chatCoach(body, env) {
   const toneLine = body.tone === "direct"
     ? "\n\nTONE: Direct. Be blunt and concise, no fluff, no cheerleading. Get to the point in as few words as possible."
     : "\n\nTONE: Encouraging. Be warm, supportive and motivating, while still concrete.";
-  const system = COACH_SYSTEM + (ctx ? "\n\n" + ctx : "") + (mem ? "\n\n" + mem : "") + toneLine;
+  const brain = await loadBrain(env);
+  const system = systemWithBrain(COACH_SYSTEM, brain, [ctx, mem].filter(Boolean).join("\n\n") + toneLine);
   const messages = (Array.isArray(body.messages) ? body.messages.slice(-24) : []).map((m) => ({ role: m.role, content: m.content }));
 
   const actions = [];
@@ -339,6 +352,16 @@ export default {
         await env.PLATFORM_STATE.delete(STRAVA_KEY);
         await env.PLATFORM_STATE.delete(STRAVA_ACTS);
         return json({ ok: true }, 200, env);
+      }
+      if (url.pathname === "/brain" && request.method === "PUT") {
+        // Rocky (desktop) pushes the coach-brain markdown. Plain text body; capped so a bad push can't blow up the prompt.
+        const text = (await request.text()).slice(0, 60000);
+        await env.PLATFORM_STATE.put(BRAIN_KEY, text);
+        return json({ ok: true, chars: text.length, savedAt: new Date().toISOString() }, 200, env);
+      }
+      if (url.pathname === "/brain" && request.method === "GET") {
+        const text = await loadBrain(env);
+        return json({ chars: text.length, text }, 200, env);
       }
       if (url.pathname === "/ai/today" && request.method === "POST") {
         const body = await request.json();

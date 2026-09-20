@@ -1423,7 +1423,7 @@ var COACH_CHIPS=["Should I run today?","How's my running week looking?","How muc
 function coachRender(){
   var box=document.getElementById("coachMsgs");
   if(!db.chat.length){
-    box.innerHTML='<div id="coachEmpty">👋 I\'m your coach. I see your macros, weight, workouts and program — and I remember what you tell me.'+
+    box.innerHTML='<div id="coachEmpty">👋 It\'s Rocky. Same one from your computer: I know your training, your plan, your week, and what you tell me here.'+
       '<div class="coachchips">'+COACH_CHIPS.map(function(c){return '<button data-chip="'+esc(c)+'">'+esc(c)+'</button>';}).join("")+'</div></div>';
     Array.prototype.forEach.call(box.querySelectorAll(".coachchips button"),function(b){
       b.addEventListener("click",function(){document.getElementById("coachText").value=b.dataset.chip;coachSend();});
@@ -1473,7 +1473,7 @@ function coachSend(){
   db.chat.push({role:"user",content:text}); ta.value=""; ta.style.height="auto";
   coachBusy=true; coachRender();
   var box=document.getElementById("coachMsgs");
-  var think=document.createElement("div"); think.className="cmsg think"; think.textContent="Coach is thinking…"; box.appendChild(think); box.scrollTop=box.scrollHeight;
+  var think=document.createElement("div"); think.className="cmsg think"; think.textContent="Rocky is thinking…"; box.appendChild(think); box.scrollTop=box.scrollHeight;
   var apiMsgs=db.chat.filter(function(m){return m.role==="user"||m.role==="assistant";}).map(function(m){return {role:m.role==="assistant"?"assistant":"user",content:m.content};});
   fetch(cfg.url.replace(/\/$/,"")+"/ai/chat",{method:"POST",
     headers:{"Authorization":"Bearer "+cfg.tok,"Content-Type":"application/json"},
@@ -1496,10 +1496,10 @@ document.getElementById("coachTone").addEventListener("click",function(){db.sett
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=36").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=37").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=36; // bump this + version.json + ?v= on every release
+var APPVER=37; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
