@@ -289,7 +289,8 @@ async function chatCoach(body, env) {
     const blocks = data.content || [];
     // collect web-search citations so the app can show real links
     blocks.forEach((b) => { (b.citations || []).forEach((c) => { if (c && c.url && !sources.includes(c.url)) sources.push(c.url); }); });
-    const txt = blocks.filter((b) => b.type === "text" && b.text).map((b) => b.text).join("\n").trim();
+    // cited text arrives as many adjacent fragments; join with "" so sentences don't break mid-line
+    const txt = blocks.filter((b) => b.type === "text" && b.text).map((b) => b.text).join("").replace(/[ \t]+\n/g, "\n").trim();
     if (txt) replyParts.push(txt);
     const clientCalls = blocks.filter((b) => b.type === "tool_use" && CLIENT_TOOLS[b.name]);
     if (data.stop_reason !== "tool_use" || !clientCalls.length) break;

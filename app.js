@@ -1070,7 +1070,7 @@ document.getElementById("digestBtn").addEventListener("click",function(){
 var RACES=[
   {d:"2026-07-04",name:"Peachtree Road Race 10K",where:"Atlanta",done:true,result:"1:11"},
   {d:"2026-10-18",name:"Miche 5K",where:"Piedmont Park",dist:"5K"},
-  {d:"2026-10-24",name:"PNC Atlanta 10 Miler",where:"Atlantic Station",dist:"10 mi"},
+  {d:"2026-10-25",name:"PNC Atlanta 10 Miler",where:"Atlantic Station · Buckhead loop",dist:"10 mi"},
   {d:"2026-10-31",name:"Día de Muertos 5K",where:"Plaza Fiesta · Chamblee",dist:"5K"},
   {d:"2026-11-26",name:"Thanksgiving Half Marathon",where:"Center Parc Stadium",dist:"13.1 mi",goal:true}
 ];
@@ -1081,7 +1081,7 @@ var RUN_PLAN=[
   ["2026-09-28","easy",3],["2026-10-01","tempo",3,"middle 10 min comfortably hard"],["2026-10-03","long",5],
   ["2026-10-05","easy",3],["2026-10-08","easy",4],["2026-10-10","long",6],
   ["2026-10-12","easy",3],["2026-10-15","tempo",4,"2 × 8 min comfortably hard"],["2026-10-17","long",5,"easy, you race tomorrow"],["2026-10-18","race",3.1,"Miche 5K"],
-  ["2026-10-19","easy",3],["2026-10-22","easy",3],["2026-10-24","race",10,"PNC Atlanta 10 Miler = this week's long run"],
+  ["2026-10-19","easy",3],["2026-10-22","easy",3],["2026-10-24","shake",2,"shakeout, race tomorrow"],["2026-10-25","race",10,"PNC Atlanta 10 Miler = this week's long run"],
   ["2026-10-26","easy",3],["2026-10-29","tempo",4,"3 × 6 min comfortably hard"],["2026-10-31","race",7,"Día de Muertos 5K, then 4 easy miles"],
   ["2026-11-02","easy",4],["2026-11-05","easy",4],["2026-11-07","long",9],
   ["2026-11-09","easy",4],["2026-11-12","tempo",5,"20 min comfortably hard"],["2026-11-14","long",11,"peak long run"],
@@ -1502,10 +1502,10 @@ document.getElementById("coachTone").addEventListener("click",function(){db.sett
 })();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=39").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=40").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=39; // bump this + version.json + ?v= on every release
+var APPVER=40; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
