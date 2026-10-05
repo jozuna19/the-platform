@@ -312,7 +312,7 @@ Return ONLY a JSON object shaped exactly:
 
 async function coachToday(body, env) {
   const brain = await loadBrain(env);
-  const data = await anthropic(systemWithBrain(TODAY_SYSTEM, brain, ""), [], [{ role: "user", content: "DATA:\n" + JSON.stringify(body) + "\n\nWrite the card." }], env, { model: coachModel(env), maxTokens: 400 });
+  const data = await anthropic(systemWithBrain(TODAY_SYSTEM, brain, ""), [], [{ role: "user", content: "DATA:\n" + JSON.stringify(body) + "\n\nWrite the card." }], env, { model: coachModel(env), maxTokens: 2000 });
   const texts = (data.content || []).filter((x) => x.type === "text" && x.text).map((x) => x.text);
   const raw = (texts.length ? texts[texts.length - 1] : "").trim();
   const m = raw.match(/\{[\s\S]*\}/);
@@ -332,7 +332,17 @@ async function chatCoach(body, env) {
     : "\n\nTONE: Encouraging. Be warm, supportive and motivating, while still concrete.";
   const brain = await loadBrain(env);
   const system = systemWithBrain(COACH_SYSTEM, brain, [ctx, mem].filter(Boolean).join("\n\n") + toneLine);
-  const messages = (Array.isArray(body.messages) ? body.messages.slice(-24) : []).map((m) => ({ role: m.role, content: m.content }));
+  // Drop empty/"Done." assistant turns from history: if the model sees itself answering "Done." it copies the pattern.
+  const isFiller = (m) => m.role === "assistant" && (!m.content || /^\s*done\.?\s*$/i.test(String(m.content)));
+  const raw = (Array.isArray(body.messages) ? body.messages.slice(-24) : []).filter((m) => !isFiller(m));
+  // collapse consecutive same-role turns left behind by the filter (API requires alternation)
+  const messages = [];
+  raw.forEach((m) => {
+    const last = messages[messages.length - 1];
+    if (last && last.role === m.role && typeof last.content === "string" && typeof m.content === "string") last.content += "\n\n" + m.content;
+    else messages.push({ role: m.role, content: m.content });
+  });
+  while (messages.length && messages[0].role !== "user") messages.shift();
 
   const lastUser = [...messages].reverse().find((m) => m.role === "user");
   const lastText = typeof (lastUser && lastUser.content) === "string" ? lastUser.content : "";
@@ -341,10 +351,11 @@ async function chatCoach(body, env) {
   const actions = [];
   let replyParts = [];
   const sources = [];
+  const stops = [];
   // Agent loop: let the model call client tools (log_food/weight/lift/remember),
   // acknowledge each so its turn continues, and capture the final spoken reply.
   for (let step = 0; step < 4; step++) {
-    const data = await anthropic(system, tools, messages, env, { model: coachModel(env), maxTokens: research ? 2500 : 1024 });
+    const data = await anthropic(system, tools, messages, env, { model: coachModel(env), maxTokens: research ? 8000 : 4096 });
     const blocks = data.content || [];
     // collect web-search citations so the app can show real links
     blocks.forEach((b) => { (b.citations || []).forEach((c) => { if (c && c.url && !sources.includes(c.url)) sources.push(c.url); }); });
@@ -353,11 +364,13 @@ async function chatCoach(body, env) {
     if (txt) replyParts.push(txt);
     const clientCalls = blocks.filter((b) => b.type === "tool_use" && CLIENT_TOOLS[b.name]);
     const serverCalls = blocks.filter((b) => b.type === "tool_use" && b.name === "strava_run_detail");
+    stops.push(data.stop_reason + (txt ? "" : ":notext"));
+    if (data.stop_reason === "pause_turn") { messages.push({ role: "assistant", content: blocks }); continue; }
     if (data.stop_reason !== "tool_use" || (!clientCalls.length && !serverCalls.length)) break;
     // record the actions for the client to actually execute
     clientCalls.forEach((b) => actions.push({ tool: b.name, input: b.input }));
     // server tools run here and hand real data back to the model
-    const results = clientCalls.map((b) => ({ type: "tool_result", tool_use_id: b.id, content: "Done." }));
+    const results = clientCalls.map((b) => ({ type: "tool_result", tool_use_id: b.id, content: "Applied in the app. Now answer John in plain words: confirm what changed and respond to anything else he asked." }));
     for (const b of serverCalls) {
       let content = "Not found.";
       try { const det = detailForCoach(await stravaDetail(env, Number(b.input && b.input.id))); if (det) content = JSON.stringify(det); } catch (e) { content = "Error: " + String(e.message || e); }
@@ -366,9 +379,26 @@ async function chatCoach(body, env) {
     messages.push({ role: "assistant", content: blocks });
     messages.push({ role: "user", content: results });
   }
-  let reply = replyParts.join("\n").trim() || "Done.";
+  let reply = replyParts.join("\n").trim();
+  if (!reply) {
+    // Model ended its turn with no words. Ask once more for an actual answer.
+    try {
+      const note = "(Note: your last turn had no text. Reply to John's last message now in plain words.)";
+      const retry = messages.slice();
+      const last = retry[retry.length - 1];
+      if (last && last.role === "user") {
+        retry[retry.length - 1] = typeof last.content === "string"
+          ? { role: "user", content: last.content + "\n\n" + note }
+          : { role: "user", content: [...last.content, { type: "text", text: note }] };
+      } else retry.push({ role: "user", content: note });
+      const data = await anthropic(system, tools, retry, env, { model: coachModel(env), maxTokens: 4096 });
+      reply = (data.content || []).filter((b) => b.type === "text" && b.text).map((b) => b.text).join("").trim();
+      stops.push("retry:" + data.stop_reason + (reply ? "" : ":notext"));
+    } catch (e) { stops.push("retry:error:" + String(e.message || e).slice(0, 80)); }
+  }
+  if (!reply) reply = actions.length ? "Updated it in the app." : "Sorry, I glitched there. Ask me again?";
   if (sources.length && !/sources?:/i.test(reply)) reply += "\n\nSources:\n" + sources.slice(0, 8).join("\n");
-  return { reply, actions, sources };
+  return { reply, actions, sources, stops };
 }
 
 export default {
