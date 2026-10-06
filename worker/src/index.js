@@ -330,8 +330,11 @@ async function chatCoach(body, env) {
   const toneLine = body.tone === "direct"
     ? "\n\nTONE: Direct. Be blunt and concise, no fluff, no cheerleading. Get to the point in as few words as possible."
     : "\n\nTONE: Encouraging. Be warm, supportive and motivating, while still concrete.";
+  const voiceLine = body.voice
+    ? "\n\nSPOKEN MODE: John is talking to you out loud and your reply will be read aloud by a voice. Answer like a person talking: 1 to 4 short natural sentences, no lists, no tables, no headers, no links, no emoji, no symbols. Say numbers the way you'd speak them. If he asks for something long (a full plan, a breakdown), give the short spoken version and say the details are in the chat."
+    : "";
   const brain = await loadBrain(env);
-  const system = systemWithBrain(COACH_SYSTEM, brain, [ctx, mem].filter(Boolean).join("\n\n") + toneLine);
+  const system = systemWithBrain(COACH_SYSTEM, brain, [ctx, mem].filter(Boolean).join("\n\n") + toneLine + voiceLine);
   // Drop empty/"Done." assistant turns from history: if the model sees itself answering "Done." it copies the pattern.
   const isFiller = (m) => m.role === "assistant" && (!m.content || /^\s*done\.?\s*$/i.test(String(m.content)));
   const raw = (Array.isArray(body.messages) ? body.messages.slice(-24) : []).filter((m) => !isFiller(m));

@@ -388,6 +388,11 @@
   .coachinput{display:flex;gap:8px;align-items:flex-end;padding:10px 12px calc(env(safe-area-inset-bottom) + 12px);border-top:1px solid var(--border)}
   #coachText{flex:1;resize:none;max-height:120px;background:var(--surface);border:1px solid var(--border);
     color:var(--text);border-radius:12px;padding:11px 12px;font:inherit;font-size:14px}
+  #coachMic{flex:none;width:44px;height:44px;border-radius:12px;border:1px solid var(--border);background:var(--surface);font-size:19px;cursor:pointer;transition:transform .15s ease,box-shadow .2s ease,background .2s ease}
+  #coachMic.listening{background:var(--gold);box-shadow:0 0 0 0 rgba(212,175,55,.6);animation:micpulse 1.2s ease-out infinite}
+  #coachMic.speaking{background:var(--surface-2);box-shadow:inset 0 0 0 2px var(--gold)}
+  @keyframes micpulse{0%{box-shadow:0 0 0 0 rgba(212,175,55,.55)}100%{box-shadow:0 0 0 14px rgba(212,175,55,0)}}
+  @media (prefers-reduced-motion:reduce){#coachMic.listening{animation:none}}
   #coachSend{flex:none;width:44px;height:44px;border-radius:12px;border:none;background:var(--gold);color:#17161A;font-size:18px;cursor:pointer}
   #coachEmpty{color:var(--muted);font-size:13px;text-align:center;margin:auto;padding:20px;line-height:1.6}
   .tonebtn{background:var(--surface-2)!important;border:1px solid var(--border)!important;color:var(--muted)!important;
@@ -832,6 +837,7 @@
   <div class="coachhead">
     <div><b>Rocky</b><small>knows you · sees your data · remembers</small></div>
     <div style="display:flex;align-items:center;gap:8px">
+      <button id="coachVoice" class="tonebtn" aria-label="Spoken replies">Voice off</button>
       <button id="coachTone" class="tonebtn" aria-label="Coach tone">Encouraging</button>
       <button id="coachClose" aria-label="Close">×</button>
     </div>
@@ -839,6 +845,7 @@
   <div id="coachStrip"></div>
   <div id="coachMsgs"></div>
   <div class="coachinput">
+    <button id="coachMic" aria-label="Talk to Rocky">🎙️</button>
     <textarea id="coachText" rows="1" placeholder="Talk to Rocky…"></textarea>
     <button id="coachSend" aria-label="Send">➤</button>
   </div>
@@ -846,6 +853,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=42"></script>
+<script src="app.js?v=43"></script>
 </body>
 </html>

@@ -1570,7 +1570,7 @@ function drawCoachStrip(){
 function coachTone(){ return (db.settings&&db.settings.coachTone)||"encouraging"; }
 function drawToneBtn(){ var b=document.getElementById("coachTone"); if(b)b.textContent=coachTone()==="direct"?"Direct":"Encouraging"; }
 function coachOpen(){ document.getElementById("coachPanel").classList.add("on"); document.getElementById("coachPanel").setAttribute("aria-hidden","false"); drawCoachStrip(); drawToneBtn(); coachRender(); setTimeout(function(){document.getElementById("coachText").focus();},100); }
-function coachClose(){ document.getElementById("coachPanel").classList.remove("on"); document.getElementById("coachPanel").setAttribute("aria-hidden","true"); }
+function coachClose(){ vStopAll(); document.getElementById("coachPanel").classList.remove("on"); document.getElementById("coachPanel").setAttribute("aria-hidden","true"); }
 function coachApply(a){
   if(!a||!a.tool)return null;
   var k=iso(TODAY);
@@ -1594,8 +1594,9 @@ function coachApply(a){
   return null;
 }
 var coachBusy=false;
-function coachSend(){
+function coachSend(viaVoice){
   if(coachBusy)return;
+  viaVoice=viaVoice===true;
   var ta=document.getElementById("coachText"), text=ta.value.trim(); if(!text)return;
   if(!cfg.url||!cfg.tok){ db.chat.push({role:"bot",content:"Connect cloud sync first (⤢ up top) — the coach runs through your synced backend."}); coachRender(); return; }
   db.chat.push({role:"user",content:text,ts:Date.now()}); ta.value=""; ta.style.height="auto";
@@ -1605,29 +1606,104 @@ function coachSend(){
   var apiMsgs=db.chat.filter(function(m){return m.role==="user"||m.role==="assistant";}).map(function(m){return {role:m.role==="assistant"?"assistant":"user",content:(m.role==="user"&&m.ts?("["+stamp(m.ts)+"] "):"")+m.content};});
   fetch(cfg.url.replace(/\/$/,"")+"/ai/chat",{method:"POST",
     headers:{"Authorization":"Bearer "+cfg.tok,"Content-Type":"application/json"},
-    body:JSON.stringify({messages:apiMsgs,context:coachContext(),memory:db.memory,tone:coachTone()})})
+    body:JSON.stringify({messages:apiMsgs,context:coachContext(),memory:db.memory,tone:coachTone(),voice:viaVoice})})
    .then(function(r){return r.ok?r.json():r.text().then(function(t){throw new Error(t);});})
    .then(function(out){
      if(out.reply) db.chat.push({role:"assistant",content:out.reply,ts:Date.now()});
      (out.actions||[]).forEach(function(a){ var note=coachApply(a); if(note) db.chat.push({role:"act",content:note,ts:Date.now()}); });
      save(); coachBusy=false; coachRender(); drawCoachStrip();
+     if(out.reply && (viaVoice || voiceOn())) vSpeak(out.reply, viaVoice && VOICE.loop);
    })
-   .catch(function(e){ coachBusy=false; db.chat.push({role:"bot",content:"Something went wrong reaching the coach. Try again."}); coachRender(); });
+   .catch(function(e){ coachBusy=false; db.chat.push({role:"bot",content:"Something went wrong reaching the coach. Try again."}); coachRender(); if(viaVoice) vSpeak("Sorry, I couldn't reach the server. Try again.",false); });
 }
 document.getElementById("coachFab").addEventListener("click",coachOpen);
 document.getElementById("coachClose").addEventListener("click",coachClose);
-document.getElementById("coachSend").addEventListener("click",coachSend);
+document.getElementById("coachSend").addEventListener("click",function(){coachSend(false);});
 document.getElementById("coachTone").addEventListener("click",function(){db.settings.coachTone=(coachTone()==="direct")?"encouraging":"direct";save();drawToneBtn();toast("Coach tone: "+(coachTone()==="direct"?"Direct":"Encouraging"));});
 (function(){ var ta=document.getElementById("coachText");
   ta.addEventListener("input",function(){ ta.style.height="auto"; ta.style.height=Math.min(120,ta.scrollHeight)+"px"; });
   ta.addEventListener("keydown",function(e){ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); coachSend(); } });
 })();
 
+
+/* ---------- Voice: talk to Rocky, Rocky talks back (free, on-device) ----------
+   Speech in  = Web Speech recognition (Safari/Chrome).  Speech out = speechSynthesis.
+   Voice style: calm, smooth female, Australian/British (EV-like style, not an imitation of anyone).
+   Tap 🎙️ once = conversation mode: Rocky answers out loud, then listens again. Tap again to stop. */
+var VOICE={rec:null,listening:false,speaking:false,loop:false,voice:null,unlocked:false};
+var VOICE_PREF=["Karen","Serena","Kate","Martha","Stephanie","Catherine","Moira","Tessa","Samantha"];
+function voiceOn(){ return !!(db.settings&&db.settings.voiceReplies); }
+function vPickVoice(){
+  if(!("speechSynthesis" in window))return null;
+  var vs=speechSynthesis.getVoices()||[]; if(!vs.length)return null;
+  var want=db.settings&&db.settings.voiceName;
+  if(want){ var w=vs.find(function(v){return v.name===want;}); if(w)return w; }
+  function score(v){ var n=v.name, sc=0, i=VOICE_PREF.findIndex(function(p){return n.indexOf(p)===0;});
+    if(i>=0)sc+=100-i*5; if(/en[-_]AU/i.test(v.lang))sc+=20; else if(/en[-_]GB/i.test(v.lang))sc+=15; else if(/^en/i.test(v.lang))sc+=1; else sc-=200;
+    if(/premium|enhanced|natural/i.test(n))sc+=40; return sc; }
+  return vs.slice().sort(function(a,b){return score(b)-score(a);})[0]||null;
+}
+if("speechSynthesis" in window){ speechSynthesis.onvoiceschanged=function(){ VOICE.voice=vPickVoice(); }; setTimeout(function(){VOICE.voice=vPickVoice();},300); }
+function vClean(t){
+  return String(t||"").replace(/https?:\/\/\S+/g,"").replace(/^Sources:[\s\S]*$/m,"")
+    .replace(/[*_#`>|]/g,"").replace(/\[(.*?)\]\(.*?\)/g,"$1")
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu,"").replace(/\s*[—–]\s*/g,", ")
+    .replace(/\n{2,}/g,". ").replace(/\n/g,", ").replace(/\s{2,}/g," ").trim();
+}
+function vUnlock(){ if(VOICE.unlocked||!("speechSynthesis" in window))return; try{ var u=new SpeechSynthesisUtterance(" "); u.volume=0; speechSynthesis.speak(u); VOICE.unlocked=true; }catch(e){} }
+function vMic(state){ var b=document.getElementById("coachMic"); if(!b)return; b.classList.toggle("listening",state==="listen"); b.classList.toggle("speaking",state==="speak"); b.textContent=state==="listen"?"👂":(state==="speak"?"🔊":"🎙️"); }
+function vSpeak(text,thenListen){
+  if(!("speechSynthesis" in window)){ if(thenListen)vListen(); return; }
+  var t=vClean(text); if(!t){ if(thenListen)vListen(); return; }
+  speechSynthesis.cancel();
+  // split into sentences so long replies don't get cut off on iOS
+  var parts=t.match(/[^.!?]+[.!?]*/g)||[t], i=0;
+  VOICE.voice=VOICE.voice||vPickVoice(); VOICE.speaking=true; vMic("speak");
+  (function next(){
+    if(!VOICE.speaking)return;
+    if(i>=parts.length){ VOICE.speaking=false; vMic(""); if(thenListen&&VOICE.loop)setTimeout(vListen,250); return; }
+    var u=new SpeechSynthesisUtterance(parts[i++].trim());
+    if(VOICE.voice){ u.voice=VOICE.voice; u.lang=VOICE.voice.lang; }
+    u.rate=1.0; u.pitch=1.0;
+    u.onend=next; u.onerror=next; speechSynthesis.speak(u);
+  })();
+}
+function vStopSpeaking(){ VOICE.speaking=false; if("speechSynthesis" in window)speechSynthesis.cancel(); vMic(""); }
+function vStopAll(){ VOICE.loop=false; vStopSpeaking(); if(VOICE.rec){ try{VOICE.rec.abort();}catch(e){} } VOICE.listening=false; vMic(""); }
+function vListen(){
+  var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ VOICE.loop=false; toast("Voice input isn't supported here. Use the 🎤 on your keyboard instead."); return; }
+  if(coachBusy)return;
+  var ta=document.getElementById("coachText"), rec=new SR(), finalText="", silence=null;
+  rec.lang="en-US"; rec.interimResults=true; rec.continuous=true; rec.maxAlternatives=1;
+  VOICE.rec=rec; VOICE.listening=true; vMic("listen");
+  function done(){ clearTimeout(silence); try{rec.stop();}catch(e){} }
+  rec.onresult=function(e){ var interim=""; for(var k=e.resultIndex;k<e.results.length;k++){ var r=e.results[k]; if(r.isFinal)finalText+=r[0].transcript+" "; else interim+=r[0].transcript; }
+    ta.value=(finalText+interim).trim(); ta.dispatchEvent(new Event("input"));
+    clearTimeout(silence); silence=setTimeout(done,1600); };  // ~1.6s of quiet = you're done talking
+  rec.onerror=function(e){ if(e.error==="not-allowed"||e.error==="service-not-allowed"){ VOICE.loop=false; toast("Mic blocked. Allow microphone access for this app in Settings."); } };
+  rec.onend=function(){ VOICE.listening=false; vMic(""); var t=ta.value.trim();
+    if(t){ coachSend(true); } else { VOICE.loop=false; } };
+  try{ rec.start(); }catch(e){ VOICE.listening=false; vMic(""); }
+}
+document.getElementById("coachMic").addEventListener("click",function(){
+  vUnlock();
+  if(VOICE.listening||VOICE.speaking||VOICE.loop){ vStopAll(); return; }   // tap again = stop
+  VOICE.loop=true; vListen();
+});
+function drawVoiceBtn(){ var b=document.getElementById("coachVoice"); if(b)b.textContent=voiceOn()?"Voice on":"Voice off"; }
+document.getElementById("coachVoice").addEventListener("click",function(){
+  vUnlock(); db.settings.voiceReplies=!voiceOn(); save(); drawVoiceBtn();
+  if(voiceOn()){ VOICE.voice=vPickVoice(); toast("Rocky will read replies out loud"+(VOICE.voice?" · "+VOICE.voice.name:"")); vSpeak("Hey John. I'm here.",false); }
+  else { vStopSpeaking(); toast("Spoken replies off. 🎙️ still talks back."); }
+});
+drawVoiceBtn();
+
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=42").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=43").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=42; // bump this + version.json + ?v= on every release
+var APPVER=43; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
