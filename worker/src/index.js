@@ -17,7 +17,7 @@
  *   POST /strava/disconnect  -> forgets the tokens
  *
  * Secrets (wrangler secret put): ANTHROPIC_API_KEY, APP_TOKEN, STRAVA_CLIENT_SECRET
- * Vars (wrangler.toml): ALLOWED_ORIGIN, AI_MODEL, COACH_MODEL (optional), STRAVA_CLIENT_ID, APP_URL
+ * Secrets: ELEVENLABS_API_KEY (voice). Vars (wrangler.toml): ALLOWED_ORIGIN, AI_MODEL, COACH_MODEL (optional), STRAVA_CLIENT_ID, APP_URL
  */
 
 const STATE_KEY = "state:john";
@@ -500,6 +500,32 @@ export default {
         if (!text || !text.trim()) return json({ items: [] }, 200, env);
         const items = await parseFood(text.trim(), env);
         return json({ items }, 200, env);
+      }
+      if (url.pathname === "/ai/voices" && request.method === "GET") {
+        // ElevenLabs voices available on John's account (premade + any he added). Key stays server side.
+        if (!env.ELEVENLABS_API_KEY) return json({ configured: false, voices: [] }, 200, env);
+        const r = await fetch("https://api.elevenlabs.io/v1/voices", { headers: { "xi-api-key": env.ELEVENLABS_API_KEY } });
+        if (!r.ok) return json({ configured: true, error: "elevenlabs " + r.status, voices: [] }, 200, env);
+        const d = await r.json();
+        const voices = (d.voices || []).map((v) => ({ id: v.voice_id, name: v.name, labels: v.labels || {}, preview: v.preview_url || "" }));
+        return json({ configured: true, voices }, 200, env);
+      }
+      if (url.pathname === "/ai/tts" && request.method === "POST") {
+        // Text in, MP3 out. Used by the app to speak Rocky's replies in a real voice.
+        if (!env.ELEVENLABS_API_KEY) return json({ error: "no_key" }, 501, env);
+        const { text, voiceId } = await request.json();
+        const clean = String(text || "").slice(0, 1500);
+        if (!clean.trim()) return json({ error: "empty" }, 400, env);
+        const vid = String(voiceId || env.ELEVENLABS_VOICE_ID || "").replace(/[^A-Za-z0-9]/g, "");
+        if (!vid) return json({ error: "no_voice" }, 400, env);
+        const r = await fetch("https://api.elevenlabs.io/v1/text-to-speech/" + vid + "?output_format=mp3_44100_64", {
+          method: "POST",
+          headers: { "xi-api-key": env.ELEVENLABS_API_KEY, "Content-Type": "application/json", Accept: "audio/mpeg" },
+          body: JSON.stringify({ text: clean, model_id: env.ELEVENLABS_MODEL || "eleven_turbo_v2_5",
+            voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.15, use_speaker_boost: true } }),
+        });
+        if (!r.ok) { const t = await r.text(); return json({ error: "elevenlabs " + r.status, detail: t.slice(0, 200) }, 502, env); }
+        return new Response(r.body, { status: 200, headers: { "Content-Type": "audio/mpeg", "Cache-Control": "no-store", ...cors(env) } });
       }
       if (url.pathname === "/ai/chat" && request.method === "POST") {
         const body = await request.json();

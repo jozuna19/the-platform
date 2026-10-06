@@ -1631,7 +1631,7 @@ document.getElementById("coachTone").addEventListener("click",function(){db.sett
    Voice style: calm, smooth female, Australian/British (EV-like style, not an imitation of anyone).
    Tap 🎙️ once = conversation mode: Rocky answers out loud, then listens again. Tap again to stop. */
 var VOICE={rec:null,listening:false,speaking:false,loop:false,voice:null,unlocked:false};
-var VOICE_PREF=["Karen","Serena","Kate","Martha","Stephanie","Catherine","Moira","Tessa","Samantha"];
+var VOICE_PREF=["Daniel","Arthur","Oliver","Rocko","Reed","Aaron","Fred","Alex","Tom"];
 function voiceOn(){ return !!(db.settings&&db.settings.voiceReplies); }
 function vPickVoice(){
   if(!("speechSynthesis" in window))return null;
@@ -1639,7 +1639,7 @@ function vPickVoice(){
   var want=db.settings&&db.settings.voiceName;
   if(want){ var w=vs.find(function(v){return v.name===want;}); if(w)return w; }
   function score(v){ var n=v.name, sc=0, i=VOICE_PREF.findIndex(function(p){return n.indexOf(p)===0;});
-    if(i>=0)sc+=100-i*5; if(/en[-_]AU/i.test(v.lang))sc+=20; else if(/en[-_]GB/i.test(v.lang))sc+=15; else if(/^en/i.test(v.lang))sc+=1; else sc-=200;
+    if(i>=0)sc+=100-i*5; if(/en[-_]GB/i.test(v.lang))sc+=20; else if(/en[-_](US|AU)/i.test(v.lang))sc+=10; else if(/^en/i.test(v.lang))sc+=1; else sc-=200;
     if(/premium|enhanced|natural/i.test(n))sc+=40; return sc; }
   return vs.slice().sort(function(a,b){return score(b)-score(a);})[0]||null;
 }
@@ -1650,9 +1650,33 @@ function vClean(t){
     .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu,"").replace(/\s*[—–]\s*/g,", ")
     .replace(/\n{2,}/g,". ").replace(/\n/g,", ").replace(/\s{2,}/g," ").trim();
 }
-function vUnlock(){ if(VOICE.unlocked||!("speechSynthesis" in window))return; try{ var u=new SpeechSynthesisUtterance(" "); u.volume=0; speechSynthesis.speak(u); VOICE.unlocked=true; }catch(e){} }
+var SILENT_MP3="data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQxAADB8AhSmxhIIEVCSiJrDCQBTcu3UrAIwUdkRgQbFAZC1CQEwTJ9mjRvBA4UOLD8nKVOWfh+UlK3z/177OXrfOdKl7pyn3Xf//WreyTRUoAWgBgkOAGbZHBgG1OF6zM82DWbZaUmMBptgQhGjsyYqc9ae9XFz280948NMBWInljyzsNRFLPWdnZGWrddDsjK1unuSrVN9jJsK8KuQtQCtMBjCEtImISdNKJOopIpBFpNSMbIHCSRpRR5iakjTiyzLhchUUBwCgyKiweBv/7UsQbg8isVNoMPMjAAAA0gAAABEVFGmgqK////9bP/6XCykxBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
+function vUnlock(){
+  if(!VOICE.audio){ VOICE.audio=new Audio(); VOICE.audio.playsInline=true; }
+  if(!VOICE.audioUnlocked){ try{ VOICE.audio.src=SILENT_MP3; var p=VOICE.audio.play(); if(p&&p.then)p.then(function(){VOICE.audioUnlocked=true;}).catch(function(){}); }catch(e){} }
+  if(VOICE.unlocked||!("speechSynthesis" in window))return; try{ var u=new SpeechSynthesisUtterance(" "); u.volume=0; speechSynthesis.speak(u); VOICE.unlocked=true; }catch(e){} }
 function vMic(state){ var b=document.getElementById("coachMic"); if(!b)return; b.classList.toggle("listening",state==="listen"); b.classList.toggle("speaking",state==="speak"); b.textContent=state==="listen"?"👂":(state==="speak"?"🔊":"🎙️"); }
+function vEngine(){ return (db.settings&&db.settings.voiceEngine)||"device"; }
 function vSpeak(text,thenListen){
+  if(vEngine()==="eleven" && db.settings.elevenVoiceId && cfg.url && cfg.tok){ return vSpeakEleven(text,thenListen); }
+  return vSpeakDevice(text,thenListen);
+}
+function vSpeakEleven(text,thenListen){
+  var t=vClean(text); if(!t){ if(thenListen)vListen(); return; }
+  vStopSpeaking(); VOICE.speaking=true; vMic("speak");
+  var a=VOICE.audio||(VOICE.audio=new Audio()); a.playsInline=true;
+  fetch(cfg.url.replace(/\/$/,"")+"/ai/tts",{method:"POST",headers:{"Authorization":"Bearer "+cfg.tok,"Content-Type":"application/json"},body:JSON.stringify({text:t,voiceId:db.settings.elevenVoiceId})})
+   .then(function(r){ if(!r.ok)throw new Error("tts "+r.status); return r.blob(); })
+   .then(function(b){
+     if(!VOICE.speaking)return;
+     if(VOICE.url)URL.revokeObjectURL(VOICE.url); VOICE.url=URL.createObjectURL(b);
+     a.onended=function(){ VOICE.speaking=false; vMic(""); if(thenListen&&VOICE.loop)setTimeout(vListen,250); };
+     a.onerror=function(){ VOICE.speaking=false; vSpeakDevice(text,thenListen); };
+     a.src=VOICE.url; var pr=a.play(); if(pr&&pr.catch)pr.catch(function(){ VOICE.speaking=false; vSpeakDevice(text,thenListen); });
+   })
+   .catch(function(){ VOICE.speaking=false; vSpeakDevice(text,thenListen); });  // no key / quota out / offline: free voice
+}
+function vSpeakDevice(text,thenListen){
   if(!("speechSynthesis" in window)){ if(thenListen)vListen(); return; }
   var t=vClean(text); if(!t){ if(thenListen)vListen(); return; }
   speechSynthesis.cancel();
@@ -1668,7 +1692,7 @@ function vSpeak(text,thenListen){
     u.onend=next; u.onerror=next; speechSynthesis.speak(u);
   })();
 }
-function vStopSpeaking(){ VOICE.speaking=false; if("speechSynthesis" in window)speechSynthesis.cancel(); vMic(""); }
+function vStopSpeaking(){ VOICE.speaking=false; if("speechSynthesis" in window)speechSynthesis.cancel(); if(VOICE.audio){ try{VOICE.audio.pause();}catch(e){} } vMic(""); }
 function vStopAll(){ VOICE.loop=false; vStopSpeaking(); if(VOICE.rec){ try{VOICE.rec.abort();}catch(e){} } VOICE.listening=false; vMic(""); }
 function vListen(){
   var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -1691,19 +1715,64 @@ document.getElementById("coachMic").addEventListener("click",function(){
   if(VOICE.listening||VOICE.speaking||VOICE.loop){ vStopAll(); return; }   // tap again = stop
   VOICE.loop=true; vListen();
 });
-function drawVoiceBtn(){ var b=document.getElementById("coachVoice"); if(b)b.textContent=voiceOn()?"Voice on":"Voice off"; }
-document.getElementById("coachVoice").addEventListener("click",function(){
-  vUnlock(); db.settings.voiceReplies=!voiceOn(); save(); drawVoiceBtn();
-  if(voiceOn()){ VOICE.voice=vPickVoice(); toast("Rocky will read replies out loud"+(VOICE.voice?" · "+VOICE.voice.name:"")); vSpeak("Hey John. I'm here.",false); }
-  else { vStopSpeaking(); toast("Spoken replies off. 🎙️ still talks back."); }
-});
+function drawVoiceBtn(){ var b=document.getElementById("coachVoice"); if(!b)return;
+  var nm=vEngine()==="eleven"&&db.settings.elevenVoiceName?db.settings.elevenVoiceName:"iPhone";
+  b.textContent="Voice: "+nm; }
+var ELEVEN_PREF=["Brian","Daniel","George","Adam","Bill","Chris","Eric","Roger","Liam","Will","Callum","Charlie"];
+function voiceSheet(){
+  vUnlock();
+  var old=document.getElementById("voiceSheet"); if(old)old.remove();
+  var el=document.createElement("div"); el.id="voiceSheet";
+  el.style.cssText="position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center";
+  el.innerHTML='<div style="width:100%;max-width:520px;max-height:78vh;overflow:auto;background:var(--surface);border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(0,0,0,.4)">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><b style="font-size:17px">Rocky\'s voice</b><button id="vsClose" style="background:none;border:none;color:var(--muted);font-size:24px">×</button></div>'
+    +'<label style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)"><span>Read every reply out loud<br><small style="color:var(--muted)">Off = only talks back when you use 🎙️</small></span><input id="vsOn" type="checkbox" '+(voiceOn()?"checked":"")+' style="width:22px;height:22px"></label>'
+    +'<div id="vsList" style="padding-top:8px;color:var(--muted)">Loading voices…</div></div>';
+  document.body.appendChild(el);
+  function close(){ el.remove(); drawVoiceBtn(); }
+  el.addEventListener("click",function(e){ if(e.target===el)close(); });
+  el.querySelector("#vsClose").addEventListener("click",close);
+  el.querySelector("#vsOn").addEventListener("change",function(e){ db.settings.voiceReplies=e.target.checked; save(); drawVoiceBtn(); });
+  var list=el.querySelector("#vsList");
+  function row(id,name,sub,on){ return '<div class="vsrow" data-id="'+id+'" style="display:flex;align-items:center;gap:10px;padding:12px;margin:6px 0;border-radius:12px;border:1px solid '+(on?"var(--gold)":"var(--border)")+';background:var(--surface-2);cursor:pointer">'
+    +'<div style="flex:1"><div style="color:var(--text);font-weight:600">'+name+(on?' <span style="color:var(--gold)">✓</span>':'')+'</div><small style="color:var(--muted)">'+sub+'</small></div>'
+    +'<button class="vsplay" data-id="'+id+'" style="flex:none;width:40px;height:40px;border-radius:50%;border:1px solid var(--border);background:var(--surface);font-size:15px">▶</button></div>'; }
+  function pick(id,name){
+    if(id==="device"){ db.settings.voiceEngine="device"; } else { db.settings.voiceEngine="eleven"; db.settings.elevenVoiceId=id; db.settings.elevenVoiceName=name; }
+    save(); drawVoiceBtn(); load();
+  }
+  var VOICES=[];
+  function load(){
+    var cur=vEngine()==="eleven"?db.settings.elevenVoiceId:"device";
+    var h=row("device","iPhone voice","Free, works offline, more robotic",cur==="device");
+    if(!VOICES.length){ list.innerHTML=h+'<p style="margin:12px 4px;font-size:13px">ElevenLabs voices show up here once the API key is added on the server.</p>'; }
+    else list.innerHTML=h+VOICES.map(function(v){ var L=v.labels||{}; return row(v.id,v.name,[L.accent,L.age,L.description||L["use case"]||L.use_case].filter(Boolean).join(" · ")||"ElevenLabs",cur===v.id); }).join("");
+    list.querySelectorAll(".vsrow").forEach(function(r){ r.addEventListener("click",function(e){ if(e.target.closest(".vsplay"))return; var v=VOICES.find(function(x){return x.id===r.dataset.id;}); pick(r.dataset.id,v?v.name:"iPhone"); }); });
+    list.querySelectorAll(".vsplay").forEach(function(b){ b.addEventListener("click",function(){
+      vStopSpeaking(); var id=b.dataset.id;
+      if(id==="device"){ vSpeakDevice("Hey John. This is the free iPhone voice.",false); return; }
+      var v=VOICES.find(function(x){return x.id===id;}); var a=VOICE.audio||(VOICE.audio=new Audio());
+      if(v&&v.preview){ a.src=v.preview; a.play().catch(function(){}); }
+    }); });
+  }
+  if(!cfg.url||!cfg.tok){ load(); return; }
+  fetch(cfg.url.replace(/\/$/,"")+"/ai/voices",{headers:{"Authorization":"Bearer "+cfg.tok}}).then(function(r){return r.json();}).then(function(d){
+    var vs=(d.voices||[]);
+    var male=vs.filter(function(v){ return !v.labels||!v.labels.gender||/male/i.test(v.labels.gender)&&!/female/i.test(v.labels.gender); });
+    male.sort(function(a,b){ var ia=ELEVEN_PREF.indexOf(a.name), ib=ELEVEN_PREF.indexOf(b.name); return (ia<0?99:ia)-(ib<0?99:ib); });
+    VOICES=male;
+    if(d.configured&&VOICES.length&&!db.settings.elevenVoiceId){ pick(VOICES[0].id,VOICES[0].name); return; }  // first time: default to the deepest pick
+    load();
+  }).catch(function(){ load(); });
+}
+document.getElementById("coachVoice").addEventListener("click",voiceSheet);
 drawVoiceBtn();
 
 /* PWA */
-if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=43").catch(function(){}); }
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js?v=44").catch(function(){}); }
 
 /* ---------- auto-update: tell John when a new version is live ---------- */
-var APPVER=43; // bump this + version.json + ?v= on every release
+var APPVER=44; // bump this + version.json + ?v= on every release
 function checkUpdate(){
   fetch("version.json?t="+Date.now(),{cache:"no-store"})
    .then(function(r){return r.ok?r.json():null;})
